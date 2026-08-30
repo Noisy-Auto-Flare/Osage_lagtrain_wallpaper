@@ -16,10 +16,12 @@ out/
 # Evidence (not committed)
 .omo/evidence/
 
-# Cycles — ignore all except _template
+# Cycles — ignore all except _template and examples (scene.json only, no frames)
 cycles/*
 !cycles/_template/
 !cycles/_template/**
+!cycles/examples/
+!cycles/examples/**
 !cycles/.gitkeep
 !cycles/README.md
 cycles/**/*.png

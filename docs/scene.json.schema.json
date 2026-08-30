@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://osage-lagtrain/scene.json",
+  "title": "OsageLagtrain SceneConfig",
+  "description": "Per-scene configuration for OsageLagtrain wallpaper cycles. Each folder under cyclesRoot is a scene.",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": {
+      "description": "Scene identifier: 1-32 chars, lowercase alphanumeric, dash, underscore",
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,32}$"
+    },
+    "title": {
+      "description": "Human-readable scene title",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "fps": {
+      "description": "Playback framerate 1..30, default 12",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30,
+      "default": 12
+    },
+    "mode": {
+      "description": "Playback mode: once | loop | pingpong | {count:1..100}",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["once", "loop", "pingpong"]
+        },
+        {
+          "type": "object",
+          "required": ["count"],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "loopCount": {
+      "description": "Legacy alias for mode {count}: number of loops when mode=loop",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "holdLastMs": {
+      "description": "Hold last frame before returning to idle, 0..5000ms, default 0",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5000,
+      "default": 0
+    },
+    "postEventDelayMs": {
+      "description": "Per-scene override for global postEventDelayMs, 0..5000ms",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5000
+    },
+    "idleColor": {
+      "description": "Per-scene idle solid color override, hex #rrggbb, default #b2b2b2",
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$",
+      "default": "#b2b2b2"
+    }
+  },
+  "additionalProperties": false
+}

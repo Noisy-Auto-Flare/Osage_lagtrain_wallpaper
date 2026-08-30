@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://osage-lagtrain/history.json",
+  "title": "OsageLagtrain History",
+  "description": "Persisted playback history for randomNoRepeat and sequentialByMtime cursor",
+  "type": "object",
+  "required": ["recent"],
+  "properties": {
+    "recent": {
+      "description": "Sliding window of recently played scene ids, max length = noRepeatWindow (0..20)",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_-]{1,32}$"
+      },
+      "maxItems": 20,
+      "default": []
+    },
+    "mtimeCursor": {
+      "description": "Cursor for sequentialByMtime: ISO timestamp or scene id last played, nullable",
+      "type": ["string", "null"],
+      "default": null
+    }
+  },
+  "additionalProperties": false
+}

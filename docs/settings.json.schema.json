@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://osage-lagtrain/settings.json",
+  "title": "OsageLagtrain Settings",
+  "description": "Global application settings persisted beside executable or in %APPDATA%/OsageLagtrain",
+  "type": "object",
+  "properties": {
+    "cyclesRoot": {
+      "description": "Path to cycles root folder. Relative to exe or absolute. Default ./cycles",
+      "type": "string",
+      "minLength": 1,
+      "default": "./cycles"
+    },
+    "postEventDelayMs": {
+      "description": "Delay after maximized window closes before playing next cycle, 0..5000ms, default 500",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5000,
+      "default": 500
+    },
+    "selectionPolicy": {
+      "description": "How next scene is chosen",
+      "type": "string",
+      "enum": ["randomNoRepeat", "randomPure", "sequentialByName", "sequentialByMtime"],
+      "default": "randomNoRepeat"
+    },
+    "noRepeatWindow": {
+      "description": "Sliding window for randomNoRepeat: number of recent scenes to avoid, 0..20, default 3 (0=off)",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20,
+      "default": 3
+    },
+    "idleColor": {
+      "description": "Idle solid color, hex #rrggbb, default #b2b2b2",
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$",
+      "default": "#b2b2b2"
+    },
+    "autostart": {
+      "description": "Enable autostart via HKCU Run",
+      "type": "boolean",
+      "default": false
+    },
+    "appMap": {
+      "description": "Optional per-exe scene mapping: {\"code.exe\": [\"sceneA\",\"sceneB\"]}",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]{1,32}$"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
