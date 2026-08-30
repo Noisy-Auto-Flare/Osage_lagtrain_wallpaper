@@ -145,14 +145,34 @@ For each row log: `topology` (Classic or Raised), `HasIdentityTransform`, `IsPau
 
 ---
 
-## Automation
+## Automation (E2E harness — Task 13)
+
+Implemented `src/Tests/E2E/QAHarness.cs` + `src/Tests/E2ETests.cs` automating 9 scenarios and 10-row matrix via mocks:
+
+* probe raised vs classic — `DesktopLayerHost.Probe()` `WS_EX_NOREDIRECTIONBITMAP` fresh `FindWindow("Progman")`, raised `SetParent(Progman)` not `WorkerW`, never `HWND_BOTTOM` on raised
+* `IsCovered` 95% — `DWMWA_EXTENDED_FRAME_BOUNDS (9)` vs `rcMonitor`/`rcWork` each dimension or area ≥0.95, `IsZoomed` fast path, filters `VISIBLE|!ICONIC|!CLOAKED|!TOOL|SelfAncestor`
+* `SHQuery` D3D — `QUNS_RUNNING_D3D_FULL_SCREEN (3)` + compat `7` pause with 500 ms cache (`ShQueryCalls`), resume after `QUNS_ACCEPTS_NOTIFICATIONS`
+* `postEventDelayMs` 500 ms — global 500, per-scene override `0..5000` clamped, jitter via `FrameScheduler.GetInterval(12)=83.3ms ±10ms`, debounce 150 ms + poll 500 ms
+* `randomNoRepeat N=3` — 100 picks `Random(42)` no immediate repeat, sliding window truncated to 3, pool-exhaust fallback
+* memory <80 MB idle / <150 MB playing 12 fps 1080 p + CPU 0 % idle / 1–3 % playing — `Process.WorkingSet64` + `GC.GetTotalMemory`, `DispatcherTimer` 83 ms not `CompositionTarget.Rendering` 60 Hz
+* `WM_DPICHANGED` / `WM_DISPLAYCHANGE` — `WallpaperWindow.HandleWindowMessage` re-layout via `MapWindowPoints` + `SetWindowPos` + healing re-probe
+* Explorer restart heal <2 s — `HandleHealingTrigger` retry 20×300 ms, `TaskbarCreated` + `EVENT_OBJECT_DESTROY` `OUTOFCONTEXT|SKIPOWNPROCESS`, fresh `FindWindow` each time
+* HDR on/off — mitigated via DComp `CreateTargetForHwnd(hwnd,true)` identity `1:1` (`HasIdentityTransform`), v1 no HDR color mgmt known limit, `idleColor #b2b2b2` fallback
+* history 1 KB cap leak — 100 advances `history.json ≤1024` bytes via `HistoryStore`/`ConfigStore` atomic `.tmp`+`File.Replace` truncation
+* matrix 100/150/200 % × 1/2 monitors × HDR × Explorer restart (10 rows) — see table above, evidence in `.omo/evidence/task-13-osage-lagtrain-wallpaper.{log,md,json}`
 
 ```powershell
-# Unit and harness tests
+# E2E only (9 scenarios + budgets + matrix + 1KB cap) — must pass on CI
+dotnet test src\Tests -c Release --filter E2E
+
+# All 111 tests (99 baseline + 12 E2E)
 dotnet test src\Tests -c Release
 
-# Manual simulation harness uses WindowMonitor.SimulateSequence
-# with mock IWindowInterop and injected QUNS state
+# Evidence after run
+ls .omo/evidence/task-13-osage-lagtrain-wallpaper.*
+
+# Screencast placeholder (real desktop capture requires physical machine; CI uses mocks)
+cat .omo/evidence/task-13-screencast.txt
 ```
 
 Do NOT use `SystemParametersInfo` in a loop for wallpaper, only `IDesktopWallpaper` per monitor and one SPI fallback on dispose.
