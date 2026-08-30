@@ -23,10 +23,12 @@ public sealed partial class DesktopLayerHost
         }
 
         var exStyle = (uint)_interop.GetWindowLongPtr(hwnd, DesktopNative.GWL_EXSTYLE);
-        if ((exStyle & DesktopNative.WS_EX_LAYERED) == 0)
+        uint desiredEx = exStyle | DesktopNative.WS_EX_LAYERED | DesktopNative.WS_EX_NOACTIVATE | DesktopNative.WS_EX_TRANSPARENT | DesktopNative.WS_EX_TOOLWINDOW;
+        desiredEx &= ~DesktopNative.WS_EX_APPWINDOW;
+        if (desiredEx != exStyle)
         {
-            _interop.SetWindowLongPtr(hwnd, DesktopNative.GWL_EXSTYLE, (nint)(exStyle | DesktopNative.WS_EX_LAYERED));
-            Log($"Attach: added WS_EX_LAYERED to exStyle 0x{exStyle:X}");
+            _interop.SetWindowLongPtr(hwnd, DesktopNative.GWL_EXSTYLE, (nint)desiredEx);
+            Log($"Attach: exStyle 0x{exStyle:X} -> 0x{desiredEx:X} (added LAYERED|NOACTIVATE|TRANSPARENT|TOOLWINDOW, removed APPWINDOW)");
         }
         SetWindowTransparency(hwnd, 255);
         _interop.SetLayeredWindowAttributes(hwnd, 0, 255, DesktopNative.LWA_ALPHA);
@@ -174,8 +176,13 @@ public sealed partial class DesktopLayerHost
     private void SetWindowTransparency(IntPtr hwnd, byte alpha)
     {
         var ex = (uint)_interop.GetWindowLongPtr(hwnd, DesktopNative.GWL_EXSTYLE);
-        if ((ex & DesktopNative.WS_EX_LAYERED) == 0)
-            _interop.SetWindowLongPtr(hwnd, DesktopNative.GWL_EXSTYLE, (nint)(ex | DesktopNative.WS_EX_LAYERED));
+        uint need = DesktopNative.WS_EX_LAYERED | DesktopNative.WS_EX_NOACTIVATE | DesktopNative.WS_EX_TRANSPARENT | DesktopNative.WS_EX_TOOLWINDOW;
+        if ((ex & need) != need || (ex & DesktopNative.WS_EX_APPWINDOW) != 0)
+        {
+            uint desired = (ex | need) & ~DesktopNative.WS_EX_APPWINDOW;
+            _interop.SetWindowLongPtr(hwnd, DesktopNative.GWL_EXSTYLE, (nint)desired);
+            Log($"SetWindowTransparency: exStyle 0x{ex:X} -> 0x{desired:X} ensure NOACTIVATE|TRANSPARENT|LAYERED|TOOLWINDOW");
+        }
         _interop.SetLayeredWindowAttributes(hwnd, 0, alpha, DesktopNative.LWA_ALPHA);
     }
 

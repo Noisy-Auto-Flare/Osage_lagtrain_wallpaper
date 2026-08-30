@@ -120,8 +120,14 @@ public partial class App : Application
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr GetParent(IntPtr hWnd);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr FindWindowW(string? lpClassName, string? lpWindowName);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr FindWindowExW(IntPtr hWndParent, IntPtr hWndChildAfter, string? lpszClass, string? lpszWindow);
 
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWCP_DONOTROUND = 1;
@@ -133,6 +139,65 @@ public partial class App : Application
     private static void TryDisableRoundedCorners(IntPtr hwnd)
     {
         try { int pref = DWMWCP_DONOTROUND; DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, sizeof(int)); } catch { }
+    }
+
+    private static void SetLayeredAttribute(IntPtr hwnd)
+    {
+        try
+        {
+            const uint LWA_ALPHA = 0x00000002;
+            SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+        }
+        catch { }
+    }
+
+    private const uint WM_MOUSEACTIVATE = 0x0021;
+    private const uint WM_NCHITTEST = 0x0084;
+    private const uint WM_WINDOWPOSCHANGING = 0x0046;
+    private const int MA_NOACTIVATE = 3;
+    private const int HTTRANSPARENT = -1;
+    private const uint SWP_NOSENDCHANGING = 0x0400;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINDOWPOS
+    {
+        public IntPtr hwnd;
+        public IntPtr hwndInsertAfter;
+        public int x;
+        public int y;
+        public int cx;
+        public int cy;
+        public uint flags;
+    }
+
+    private static void EnforceBehindDefView(IntPtr wallpaperHwnd, ref WINDOWPOS pos)
+    {
+        // Always deny activation
+        pos.flags |= SWP_NOACTIVATE;
+        // If wallpaper would be moved to top/front (HWND_TOP or null) try to keep it behind DefView
+        try
+        {
+            var progman = FindWindowW("Progman", null);
+            if (progman != IntPtr.Zero)
+            {
+                IntPtr defView = FindWindowExW(progman, IntPtr.Zero, "SHELLDLL_DefView", null);
+                if (defView != IntPtr.Zero)
+                {
+                    // If requested to go in front of DefView, correct to behind DefView
+                    // HWND_TOP (0) or defView itself as insertion would put in front; we want after defView
+                    if (pos.hwndInsertAfter == IntPtr.Zero || pos.hwndInsertAfter == defView)
+                    {
+                        // Don't override if already correctly behind DefView — only fix front placements
+                        // For now ensure we are after DefView, not at TOP
+                        if (pos.hwndInsertAfter == IntPtr.Zero)
+                            pos.hwndInsertAfter = defView;
+                    }
+                    // If wallpaper is Progman child, ensure it stays behind DefView by not allowing HWND_TOP
+                    // Additional enforcement: if flags would bring to front, insert after DefView
+                }
+            }
+        }
+        catch { }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -383,6 +448,25 @@ public partial class App : Application
 
     private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        // Wallpaper host: never activate, click-through, stable behind DefView
+        if (hWnd == _hwnd)
+        {
+            if (msg == WM_MOUSEACTIVATE)
+                return (IntPtr)MA_NOACTIVATE; // prevent activation on click
+            if (msg == WM_NCHITTEST)
+                return (IntPtr)HTTRANSPARENT; // click-through to DefView/SysListView32 (icons stay on top)
+            if (msg == WM_WINDOWPOSCHANGING && lParam != IntPtr.Zero)
+            {
+                try
+                {
+                    var pos = Marshal.PtrToStructure<WINDOWPOS>(lParam);
+                    EnforceBehindDefView(hWnd, ref pos);
+                    Marshal.StructureToPtr(pos, lParam, false);
+                }
+                catch { }
+                // fall through to old proc with modified pos
+            }
+        }
         try
         {
             // SingleInstance registered message first
@@ -906,7 +990,7 @@ public partial class App : Application
         }
         catch { }
 
-        // Win32: remove WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_BORDER | WS_DLGFRAME | WS_CHILD, add WS_POPUP
+        // Win32: remove caption/border bits; keep WS_CHILD vs WS_POPUP based on parented state (Progman child must stay WS_CHILD, top-level must be POPUP)
         try
         {
             const int GWL_STYLE = -16;
@@ -920,17 +1004,35 @@ public partial class App : Application
             const long WS_DLGFRAME = 0x00400000L;
             const long WS_CHILD = 0x40000000L;
             const long WS_POPUP = unchecked((long)0x80000000);
+            var parentForStyle = IntPtr.Zero;
+            try { parentForStyle = GetParent(hwnd); } catch { }
             var style = GetWindowLongPtrW(hwnd, GWL_STYLE);
             long s = style.ToInt64();
-            s &= ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_BORDER | WS_DLGFRAME | WS_CHILD);
-            s |= WS_POPUP;
+            s &= ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_BORDER | WS_DLGFRAME);
+            if (parentForStyle != IntPtr.Zero)
+            {
+                // Attached to Progman/WorkerW — must stay WS_CHILD, not POPUP
+                s &= ~WS_POPUP;
+                s |= WS_CHILD;
+            }
+            else
+            {
+                // Top-level before attach — stay POPUP
+                s &= ~WS_CHILD;
+                s |= WS_POPUP;
+            }
             SetWindowLongPtrW(hwnd, GWL_STYLE, new IntPtr(s));
 
             var ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
             long exVal = ex.ToInt64();
             exVal |= 0x00000080L; // WS_EX_TOOLWINDOW
+            exVal |= 0x08000000L; // WS_EX_NOACTIVATE
+            exVal |= 0x00000020L; // WS_EX_TRANSPARENT (click-through to DefView)
+            exVal |= 0x00080000L; // WS_EX_LAYERED (keep layered opaque)
             exVal &= ~0x00040000L; // WS_EX_APPWINDOW
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new IntPtr(exVal));
+            // Ensure layered alpha opaque so DComp/Image still visible despite TRANSPARENT
+            try { SetLayeredAttribute(hwnd); } catch { }
         }
         catch { }
         // Remove rounded corners (Win11 DWM) — must be after style changes
@@ -976,10 +1078,44 @@ public partial class App : Application
             }
             catch { }
             ShowWindow(hwnd, 8); // SW_SHOWNA - show without activate
-            // Push to bottom behind taskbar (Shell_TrayWnd is TOPMOST) and behind icons; keep borderless and no-round.
-            try { SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); } catch { }
+            // Stable Z-order: raised -> behind DefView (DefView > wallpaper > WorkerW), classic -> HWND_BOTTOM
+            try
+            {
+                IntPtr parent = IntPtr.Zero;
+                try { parent = GetParent(hwnd); } catch { }
+                IntPtr progman = IntPtr.Zero;
+                try { progman = FindWindowW("Progman", null); } catch { }
+                IntPtr defView = IntPtr.Zero;
+                try { if (progman != IntPtr.Zero) defView = FindWindowExW(progman, IntPtr.Zero, "SHELLDLL_DefView", null); } catch { }
+                if (parent != IntPtr.Zero && parent == progman && defView != IntPtr.Zero)
+                {
+                    // Raised: place directly behind DefView
+                    SetWindowPos(hwnd, defView, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    // Keep WorkerW behind wallpaper (bottom)
+                    try
+                    {
+                        IntPtr workerW = FindWindowExW(progman, IntPtr.Zero, "WorkerW", null);
+                        if (workerW != IntPtr.Zero) SetWindowPos(workerW, hwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                        else
+                        {
+                            // fallback enum next-sibling WorkerW
+                            IntPtr next = FindWindowExW(IntPtr.Zero, progman, "WorkerW", null);
+                            if (next != IntPtr.Zero) SetWindowPos(next, hwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                        }
+                    }
+                    catch { }
+                }
+                else
+                {
+                    // Classic top-level or hidden fallback — push to bottom behind taskbar (Shell_TrayWnd is TOPMOST)
+                    SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
+            }
+            catch { }
             TryDisableRoundedCorners(hwnd);
-            System.Diagnostics.Debug.WriteLine($"[App] EnsureWallpaperBehindDesktop SW_SHOWNA HWND_BOTTOM borderless hwnd=0x{hwnd.ToInt64():X} behind icons/taskbar");
+            // Re-ensure NOACTIVATE|TRANSPARENT after potential parent/Z tweaks
+            try { EnsureWindowBorderless(hwnd); } catch { }
+            System.Diagnostics.Debug.WriteLine($"[App] EnsureWallpaperBehindDesktop SW_SHOWNA behind DefView/bottom borderless hwnd=0x{hwnd.ToInt64():X}");
         }
         catch (Exception ex)
         {
