@@ -166,12 +166,19 @@ public partial class App : Application
         _wallpaperHostWindow = new HiddenWallpaperHostWindow();
         _wallpaperHostWindow.Activate();
         _hwnd = WindowNative.GetWindowHandle(_wallpaperHostWindow);
+        EnsureWindowBorderless(_hwnd);
         HideHostWindowImmediate(_hwnd);
 
         // Show idle #b2b2b2 immediately on UI thread — do not wait for desktop probe
         try
         {
             _wallpaperWindow = new Rendering.WallpaperWindow(layerHost: _desktopHost, idleColorHex: settings.IdleColor);
+            try
+            {
+                if (_wallpaperHostWindow is HiddenWallpaperHostWindow hw)
+                    _wallpaperWindow.BindHostImage(hw.WallpaperImage);
+            }
+            catch { }
             _wallpaperWindow.ShowIdle();
         }
         catch (Exception ex)
@@ -229,21 +236,9 @@ public partial class App : Application
                             // Fallback: Attach failed (WorkerW not found on classic / missing SHELLDLL_DefView on raised) — do NOT hide forever.
                             // Show fullscreen borderless window as fallback so idleColor #b2b2b2 and wallpaper frames still appear.
                             // Keep TOOLWINDOW + not in switchers so it doesn't pollute Alt+Tab/taskbar.
-                            try
-                            {
-                                // Remove WS_CHILD added by Attach attempt, restore WS_POPUP for top-level fallback
-                                const int GWL_STYLE = -16;
-                                var style = GetWindowLongPtrW(hwndCopy, GWL_STYLE);
-                                long s = style.ToInt64();
-                                s &= ~0x40000000L; // WS_CHILD
-                                s |= 0x80000000L; // WS_POPUP (0x80000000 unsigned, keep as long)
-                                // Actually WS_POPUP = 0x80000000 which is negative int32; use unchecked
-                                s = (s & ~0x40000000L) | unchecked((long)0x80000000);
-                                SetWindowLongPtrW(hwndCopy, GWL_STYLE, new IntPtr(s));
-                            }
-                            catch { }
+                            try { EnsureWindowBorderless(hwndCopy); } catch { }
                             try { EnsureWallpaperBehindDesktop(hwndCopy); } catch { }
-                            try { ShowWindow(hwndCopy, 8); } catch { } // SW_SHOWNA fallback visible
+                            try { ShowWindow(hwndCopy, 8); } catch { } // SW_SHOWNA fallback visible borderless
                             System.Diagnostics.Debug.WriteLine($"[App] Attach returned false - fallback SW_SHOWNA shown hwnd=0x{hwndCopy.ToInt64():X} (WorkerW/DefView not found, fallback keeps wallpaper visible)");
                             Console.WriteLine($"[App] Attach returned false - fallback SW_SHOWNA shown hwnd=0x{hwndCopy.ToInt64():X}");
                         }
@@ -836,36 +831,94 @@ public partial class App : Application
         try { _singleInstance?.Dispose(); } catch { }
     }
 
+    internal static void EnsureWindowBorderless(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return;
+        // AppWindow: extend content into title bar, no border/caption, not in switchers
+        try
+        {
+            var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
+            if (appWindow != null)
+            {
+                appWindow.IsShownInSwitchers = false;
+                try { appWindow.TitleBar.ExtendsContentIntoTitleBar = true; } catch { }
+                try
+                {
+                    if (appWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter op)
+                    {
+                        op.IsMaximizable = false;
+                        op.IsMinimizable = false;
+                        op.IsResizable = false;
+                        op.IsAlwaysOnTop = false;
+                        try { op.SetBorderAndTitleBar(false, false); } catch { }
+                    }
+                    else
+                    {
+                        try
+                        {
+                            var presenter = Microsoft.UI.Windowing.OverlappedPresenter.Create();
+                            presenter.IsMaximizable = false;
+                            presenter.IsMinimizable = false;
+                            presenter.IsResizable = false;
+                            presenter.IsAlwaysOnTop = false;
+                            presenter.SetBorderAndTitleBar(false, false);
+                            appWindow.SetPresenter(presenter);
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+                try
+                {
+                    var tb = appWindow.TitleBar;
+                    tb.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+                    tb.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+                    tb.ButtonForegroundColor = Microsoft.UI.Colors.Transparent;
+                }
+                catch { }
+            }
+        }
+        catch { }
+
+        // Win32: remove WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_BORDER | WS_DLGFRAME | WS_CHILD, add WS_POPUP
+        try
+        {
+            const int GWL_STYLE = -16;
+            const int GWL_EXSTYLE = -20;
+            const long WS_CAPTION = 0x00C00000L;
+            const long WS_THICKFRAME = 0x00040000L;
+            const long WS_SYSMENU = 0x00080000L;
+            const long WS_MINIMIZEBOX = 0x00020000L;
+            const long WS_MAXIMIZEBOX = 0x00010000L;
+            const long WS_BORDER = 0x00800000L;
+            const long WS_DLGFRAME = 0x00400000L;
+            const long WS_CHILD = 0x40000000L;
+            const long WS_POPUP = unchecked((long)0x80000000);
+            var style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            long s = style.ToInt64();
+            s &= ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_BORDER | WS_DLGFRAME | WS_CHILD);
+            s |= WS_POPUP;
+            SetWindowLongPtrW(hwnd, GWL_STYLE, new IntPtr(s));
+
+            var ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            long exVal = ex.ToInt64();
+            exVal |= 0x00000080L; // WS_EX_TOOLWINDOW
+            exVal &= ~0x00040000L; // WS_EX_APPWINDOW
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new IntPtr(exVal));
+        }
+        catch { }
+    }
+
     private static void HideHostWindowImmediate(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero) return;
         try
         {
-            const int GWL_EXSTYLE = -20;
-            const int WS_EX_TOOLWINDOW = 0x00000080;
-            const int WS_EX_APPWINDOW = 0x00040000;
-            try
-            {
-                var ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-                long exVal = ex.ToInt64();
-                exVal |= WS_EX_TOOLWINDOW;
-                exVal &= ~WS_EX_APPWINDOW;
-                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new IntPtr(exVal));
-            }
-            catch { }
-            try
-            {
-                var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
-                var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
-                if (appWindow != null)
-                {
-                    appWindow.IsShownInSwitchers = false;
-                }
-            }
-            catch { }
+            EnsureWindowBorderless(hwnd);
             ShowWindow(hwnd, 0); // SW_HIDE
-            System.Diagnostics.Debug.WriteLine($"[App] HideHostWindowImmediate SW_HIDE + TOOLWINDOW hwnd=0x{hwnd.ToInt64():X}");
-            Console.WriteLine($"[App] HideHostWindowImmediate hidden hwnd=0x{hwnd.ToInt64():X}");
+            System.Diagnostics.Debug.WriteLine($"[App] HideHostWindowImmediate SW_HIDE + TOOLWINDOW borderless hwnd=0x{hwnd.ToInt64():X}");
+            Console.WriteLine($"[App] HideHostWindowImmediate hidden borderless hwnd=0x{hwnd.ToInt64():X}");
         }
         catch (Exception ex)
         {
@@ -878,30 +931,9 @@ public partial class App : Application
         if (hwnd == IntPtr.Zero) return;
         try
         {
-            const int GWL_EXSTYLE = -20;
-            const int WS_EX_TOOLWINDOW = 0x00000080;
-            const int WS_EX_APPWINDOW = 0x00040000;
-            try
-            {
-                var ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-                long exVal = ex.ToInt64();
-                exVal |= WS_EX_TOOLWINDOW;
-                exVal &= ~WS_EX_APPWINDOW;
-                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new IntPtr(exVal));
-            }
-            catch { }
-            try
-            {
-                var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
-                var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
-                if (appWindow != null)
-                {
-                    appWindow.IsShownInSwitchers = false;
-                }
-            }
-            catch { }
-            ShowWindow(hwnd, 8); // SW_SHOWNA - show without activate, keeps behind desktop parent
-            System.Diagnostics.Debug.WriteLine($"[App] EnsureWallpaperBehindDesktop SW_SHOWNA hwnd=0x{hwnd.ToInt64():X}");
+            EnsureWindowBorderless(hwnd);
+            ShowWindow(hwnd, 8); // SW_SHOWNA - show without activate, stays below taskbar (taskbar is TOPMOST)
+            System.Diagnostics.Debug.WriteLine($"[App] EnsureWallpaperBehindDesktop SW_SHOWNA borderless hwnd=0x{hwnd.ToInt64():X}");
         }
         catch (Exception ex)
         {
@@ -912,13 +944,48 @@ public partial class App : Application
 
 public sealed class HiddenWallpaperHostWindow : Window
 {
+    public Microsoft.UI.Xaml.Controls.Image WallpaperImage { get; }
+    public Microsoft.UI.Xaml.Controls.Grid RootGrid { get; }
+
     public HiddenWallpaperHostWindow()
     {
         Title = "Osage Lagtrain Wallpaper";
-        Content = new Microsoft.UI.Xaml.Controls.Grid
+        WallpaperImage = new Microsoft.UI.Xaml.Controls.Image
+        {
+            Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill,
+            HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Stretch,
+            VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Stretch,
+            Opacity = 1.0
+        };
+        RootGrid = new Microsoft.UI.Xaml.Controls.Grid
         {
             Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0xFF, 0xB2, 0xB2, 0xB2))
         };
+        // Image on top of grey idle background - frames cover grey when playing
+        RootGrid.Children.Add(WallpaperImage);
+        Content = RootGrid;
+        Activated += OnActivated;
+    }
+
+    private void OnActivated(object sender, Microsoft.UI.Xaml.WindowActivatedEventArgs args)
+    {
+        try
+        {
+            var hwnd = WindowNative.GetWindowHandle(this);
+            App.EnsureWindowBorderless(hwnd);
+        }
+        catch { }
+        Activated -= OnActivated;
+    }
+
+    public void EnsureBorderless()
+    {
+        try
+        {
+            var hwnd = WindowNative.GetWindowHandle(this);
+            App.EnsureWindowBorderless(hwnd);
+        }
+        catch { }
     }
 }
 

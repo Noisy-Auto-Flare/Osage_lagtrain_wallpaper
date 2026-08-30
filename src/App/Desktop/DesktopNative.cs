@@ -12,6 +12,14 @@ internal static class DesktopNative
     public const uint WS_EX_APPWINDOW = 0x00040000;
     public const uint WS_POPUP = 0x80000000;
     public const uint WS_CHILD = 0x40000000;
+    public const uint WS_CAPTION = 0x00C00000; // WS_BORDER | WS_DLGFRAME
+    public const uint WS_BORDER = 0x00800000;
+    public const uint WS_DLGFRAME = 0x00400000;
+    public const uint WS_THICKFRAME = 0x00040000;
+    public const uint WS_SYSMENU = 0x00080000;
+    public const uint WS_MINIMIZEBOX = 0x00020000;
+    public const uint WS_MAXIMIZEBOX = 0x00010000;
+    public const uint WS_VISIBLE = 0x10000000;
     public const uint LWA_ALPHA = 0x00000002;
 
     public const uint MSG_CREATE_WORKERW = 0x052C;

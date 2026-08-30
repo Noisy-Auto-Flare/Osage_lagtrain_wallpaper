@@ -82,15 +82,63 @@ public sealed partial class DesktopLayerHost
             {
                 var fStyle = (uint)_interop.GetWindowLongPtr(hwnd, DesktopNative.GWL_STYLE);
                 uint fNewStyle = fStyle;
-                fNewStyle &= ~DesktopNative.WS_CHILD;
+                // Remove caption/border/thickframe/sysmenu/min/max/child and ensure borderless POPUP
+                fNewStyle &= ~(DesktopNative.WS_CHILD | DesktopNative.WS_CAPTION | DesktopNative.WS_THICKFRAME | DesktopNative.WS_SYSMENU | DesktopNative.WS_MINIMIZEBOX | DesktopNative.WS_MAXIMIZEBOX | DesktopNative.WS_BORDER | DesktopNative.WS_DLGFRAME);
                 fNewStyle |= DesktopNative.WS_POPUP;
-                if ((fNewStyle & DesktopNative.WS_POPUP) != 0 && (fNewStyle & DesktopNative.WS_CHILD) != 0)
-                    fNewStyle &= ~DesktopNative.WS_POPUP;
+                // Ensure visible flag not cleared accidentally — keep WS_POPUP even if signed
+                if ((fNewStyle & DesktopNative.WS_POPUP) == 0)
+                    fNewStyle |= DesktopNative.WS_POPUP;
                 if (fNewStyle != fStyle)
                 {
                     _interop.SetWindowLongPtr(hwnd, DesktopNative.GWL_STYLE, (nint)fNewStyle);
-                    Log($"AttachClassic fallback: style 0x{fStyle:X} -> 0x{fNewStyle:X} (WS_POPUP restored, WS_CHILD removed)");
+                    Log($"AttachClassic fallback: style 0x{fStyle:X} -> 0x{fNewStyle:X} (WS_POPUP restored, caption/thickframe/sysmenu removed, borderless)");
                 }
+                // Also via AppWindow (reflection to avoid Tests hard dep on Microsoft.UI)
+                try
+                {
+                    var win32InteropType = Type.GetType("Microsoft.UI.Win32Interop, Microsoft.UI");
+                    var appWindowType = Type.GetType("Microsoft.UI.Windowing.AppWindow, Microsoft.UI");
+                    if (win32InteropType != null && appWindowType != null)
+                    {
+                        var getId = win32InteropType.GetMethod("GetWindowIdFromWindow");
+                        var getFromId = appWindowType.GetMethod("GetFromWindowId");
+                        if (getId != null && getFromId != null)
+                        {
+                            var id = getId.Invoke(null, new object[] { hwnd });
+                            var aw = getFromId.Invoke(null, new object[] { id! });
+                            if (aw != null)
+                            {
+                                var isShownProp = appWindowType.GetProperty("IsShownInSwitchers");
+                                isShownProp?.SetValue(aw, false);
+                                try
+                                {
+                                    var tbProp = appWindowType.GetProperty("TitleBar");
+                                    var tb = tbProp?.GetValue(aw);
+                                    var extProp = tb?.GetType().GetProperty("ExtendsContentIntoTitleBar");
+                                    extProp?.SetValue(tb, true);
+                                }
+                                catch { }
+                                try
+                                {
+                                    var presenterProp = appWindowType.GetProperty("Presenter");
+                                    var presenter = presenterProp?.GetValue(aw);
+                                    if (presenter != null)
+                                    {
+                                        var t = presenter.GetType();
+                                        t.GetProperty("IsMaximizable")?.SetValue(presenter, false);
+                                        t.GetProperty("IsMinimizable")?.SetValue(presenter, false);
+                                        t.GetProperty("IsResizable")?.SetValue(presenter, false);
+                                        t.GetProperty("IsAlwaysOnTop")?.SetValue(presenter, false);
+                                        var setBorder = t.GetMethod("SetBorderAndTitleBar");
+                                        setBorder?.Invoke(presenter, new object[] { false, false });
+                                    }
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+                catch { }
             }
             catch { }
             try
