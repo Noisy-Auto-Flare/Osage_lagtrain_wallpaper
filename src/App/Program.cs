@@ -61,8 +61,19 @@ internal static partial class Program
             return;
         }
         TrySetPerMonitorV2();
-        XamlCheckProcessRequirements();
-        global::WinRT.ComWrappersSupport.InitializeComWrappers();
+        try { XamlCheckProcessRequirements(); }
+        catch (DllNotFoundException ex)
+        {
+            Console.Error.WriteLine($"[ERROR] Windows App Runtime not found: {ex.Message}");
+            Console.Error.WriteLine("The app requires Windows App Runtime. Reinstall or use framework-dependent package.");
+            Environment.Exit(1);
+            return;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[WARN] XamlCheckProcessRequirements failed: {ex.Message}");
+        }
+        try { global::WinRT.ComWrappersSupport.InitializeComWrappers(); } catch (DllNotFoundException ex) { Console.Error.WriteLine($"[ERROR] WinRT init failed: {ex.Message}"); Environment.Exit(1); return; }
         global::Microsoft.UI.Xaml.Application.Start((p) =>
         {
             var context = new global::Microsoft.UI.Dispatching.DispatcherQueueSynchronizationContext(global::Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
