@@ -190,6 +190,58 @@ public sealed partial class DesktopLayerHost
             // Re-assert bottom after ShowWindow — ShowWindow can bring to top, so push back to bottom behind taskbar/icons and disable rounding again.
             try { _interop.SetWindowPos(hwnd, DesktopNative.HWND_BOTTOM, 0, 0, 0, 0, DesktopNative.SWP_NOMOVE | DesktopNative.SWP_NOSIZE | DesktopNative.SWP_NOACTIVATE); } catch { }
             try { TryDisableRoundedCorners(hwnd); } catch { }
+            // Ensure icons stay above wallpaper: wallpaper is HWND_BOTTOM child of Progman, so bring SHELLDLL_DefView (and its SysListView32) to HWND_TOP.
+            try
+            {
+                IntPtr defView = IntPtr.Zero;
+                try
+                {
+                    var progmanForDefView = LastProgman != IntPtr.Zero ? LastProgman : _interop.FindWindow("Progman", null);
+                    if (progmanForDefView != IntPtr.Zero)
+                        defView = _interop.FindWindowEx(progmanForDefView, IntPtr.Zero, "SHELLDLL_DefView", null);
+                }
+                catch { }
+                if (defView == IntPtr.Zero)
+                {
+                    try { defView = _interop.GetShellDefView(); } catch { }
+                }
+                if (defView == IntPtr.Zero)
+                {
+                    _interop.EnumWindows((hWnd, lParam) =>
+                    {
+                        IntPtr dv = IntPtr.Zero;
+                        try { dv = _interop.FindWindowEx(hWnd, IntPtr.Zero, "SHELLDLL_DefView", null); } catch { }
+                        if (dv != IntPtr.Zero)
+                        {
+                            defView = dv;
+                            return false;
+                        }
+                        return true;
+                    }, IntPtr.Zero);
+                }
+                if (defView != IntPtr.Zero)
+                {
+                    bool topOk = false;
+                    try { topOk = _interop.SetWindowPos(defView, DesktopNative.HWND_TOP, 0, 0, 0, 0, DesktopNative.SWP_NOMOVE | DesktopNative.SWP_NOSIZE | DesktopNative.SWP_NOACTIVATE); } catch { }
+                    Log($"AttachClassic fallback: SetWindowPos DefView=0x{defView.ToInt64():X} HWND_TOP => {topOk} (icons on top of wallpaper)");
+                    try
+                    {
+                        var listView = _interop.FindWindowEx(defView, IntPtr.Zero, "SysListView32", null);
+                        if (listView != IntPtr.Zero)
+                        {
+                            bool lvOk = false;
+                            try { lvOk = _interop.SetWindowPos(listView, DesktopNative.HWND_TOP, 0, 0, 0, 0, DesktopNative.SWP_NOMOVE | DesktopNative.SWP_NOSIZE | DesktopNative.SWP_NOACTIVATE); } catch { }
+                            Log($"AttachClassic fallback: SetWindowPos SysListView32=0x{listView.ToInt64():X} HWND_TOP => {lvOk}");
+                        }
+                    }
+                    catch { }
+                }
+                else
+                {
+                    Log("AttachClassic fallback: SHELLDLL_DefView not found — icons may still be behind wallpaper");
+                }
+            }
+            catch (Exception ex) { Log($"AttachClassic fallback bring DefView on top failed: {ex.Message}"); }
             Log($"AttachClassic: fallback SW_SHOWNA HWND_BOTTOM hwnd=0x{hwnd.ToInt64():X} WorkerW not found — fallback visible behind icons/taskbar (not covering)");
             _attachedHwnd = hwnd;
             SetupHealing();
