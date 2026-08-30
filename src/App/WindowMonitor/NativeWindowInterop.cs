@@ -14,10 +14,10 @@ public sealed class NativeWindowInterop : IWindowInterop, IDisposable
     public IntPtr GetShellWindow() => NativeMethods.GetShellWindow();
     public string GetClassName(IntPtr hwnd)
     {
-        Span<char> buf = stackalloc char[256];
-        int len = NativeMethods.GetClassNameW(hwnd, buf);
+        var sb = new System.Text.StringBuilder(256);
+        int len = NativeMethods.GetClassNameW(hwnd, sb, sb.Capacity);
         if (len <= 0) return string.Empty;
-        return new string(buf[..len]);
+        return sb.ToString();
     }
     public bool IsZoomed(IntPtr hwnd) => NativeMethods.IsZoomed(hwnd);
     public bool IsWindowVisible(IntPtr hwnd) => NativeMethods.IsWindowVisible(hwnd);
@@ -138,7 +138,7 @@ public sealed class NativeWindowInterop : IWindowInterop, IDisposable
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] public static extern IntPtr GetDesktopWindow();
         [DllImport("user32.dll")] public static extern IntPtr GetShellWindow();
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassNameW(IntPtr hWnd, Span<char> lpClassName);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassNameW(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
         [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
         [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
         [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
