@@ -76,9 +76,53 @@ public sealed partial class DesktopLayerHost
             // Avoid 6-sec synchronous EnsureLayer on UI thread. Background healing (EnsureLayerAsync) handles retries.
             // Do a single quick probe without sleep; if still missing, fail fast and let caller/healing retry asynchronously.
             Log("AttachClassic: WorkerW not found — skipping synchronous EnsureLayer (use EnsureLayerAsync on background)");
-            // Fallback: keep hidden wallpaper window hidden (do not leave white visible window) — hide via SW_HIDE
-            try { _interop.ShowWindow(hwnd, DesktopNative.SW_HIDE); } catch { }
-            Log($"AttachClassic: fallback SW_HIDE hwnd=0x{hwnd.ToInt64():X} WorkerW not found");
+            // Fallback visible: keep wallpaper as fullscreen borderless window covering virtual screen even without WorkerW (for testing).
+            // Restore WS_POPUP, remove WS_CHILD, add WS_EX_TOOLWINDOW, remove WS_EX_APPWINDOW, position covering virtual screen with DpiScale + MapWindowPoints, SW_SHOWNA.
+            try
+            {
+                var fStyle = (uint)_interop.GetWindowLongPtr(hwnd, DesktopNative.GWL_STYLE);
+                uint fNewStyle = fStyle;
+                fNewStyle &= ~DesktopNative.WS_CHILD;
+                fNewStyle |= DesktopNative.WS_POPUP;
+                if ((fNewStyle & DesktopNative.WS_POPUP) != 0 && (fNewStyle & DesktopNative.WS_CHILD) != 0)
+                    fNewStyle &= ~DesktopNative.WS_POPUP;
+                if (fNewStyle != fStyle)
+                {
+                    _interop.SetWindowLongPtr(hwnd, DesktopNative.GWL_STYLE, (nint)fNewStyle);
+                    Log($"AttachClassic fallback: style 0x{fStyle:X} -> 0x{fNewStyle:X} (WS_POPUP restored, WS_CHILD removed)");
+                }
+            }
+            catch { }
+            try
+            {
+                var fExStyle = (uint)_interop.GetWindowLongPtr(hwnd, DesktopNative.GWL_EXSTYLE);
+                uint fNewEx = fExStyle;
+                fNewEx |= DesktopNative.WS_EX_TOOLWINDOW;
+                fNewEx &= ~DesktopNative.WS_EX_APPWINDOW;
+                if (fNewEx != fExStyle)
+                {
+                    _interop.SetWindowLongPtr(hwnd, DesktopNative.GWL_EXSTYLE, (nint)fNewEx);
+                    Log($"AttachClassic fallback: exStyle 0x{fExStyle:X} -> 0x{fNewEx:X} (TOOLWINDOW added, APPWINDOW removed)");
+                }
+            }
+            catch { }
+            try
+            {
+                var fbBounds = _display.VirtualScreenBounds;
+                double fbScale = _display.GetScaleForWindow(hwnd);
+                if (fbScale <= 0) fbScale = 1.0;
+                var fbRc = new RECT { Left = fbBounds.Left, Top = fbBounds.Top, Right = fbBounds.Right, Bottom = fbBounds.Bottom };
+                _interop.MapWindowPoints(IntPtr.Zero, IntPtr.Zero, ref fbRc, 2);
+                int fbW = (int)(fbBounds.Width * fbScale);
+                int fbH = (int)(fbBounds.Height * fbScale);
+                bool fbPosOk = _interop.SetWindowPos(hwnd, DesktopNative.HWND_TOP, fbRc.Left, fbRc.Top, fbW, fbH, DesktopNative.SWP_NOACTIVATE);
+                Log($"AttachClassic fallback: SetWindowPos to {fbRc.Left},{fbRc.Top} {fbW}x{fbH} scale {fbScale} => {fbPosOk} (MapWindowPoints rc {fbRc.Left},{fbRc.Top} virtual screen fallback visible)");
+            }
+            catch (Exception ex) { Log($"AttachClassic fallback SetWindowPos failed: {ex.Message}"); }
+            try { _interop.ShowWindow(hwnd, DesktopNative.SW_SHOWNA); } catch { }
+            Log($"AttachClassic: fallback SW_SHOWNA hwnd=0x{hwnd.ToInt64():X} WorkerW not found — fallback visible covering virtual screen");
+            _attachedHwnd = hwnd;
+            SetupHealing();
             return false;
         }
         bool parentOk = _interop.SetParent(hwnd, workerW);

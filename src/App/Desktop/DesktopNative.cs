@@ -8,6 +8,8 @@ internal static class DesktopNative
     public const int GWL_STYLE = -16;
     public const uint WS_EX_NOREDIRECTIONBITMAP = 0x00000008;
     public const uint WS_EX_LAYERED = 0x00080000;
+    public const uint WS_EX_TOOLWINDOW = 0x00000080;
+    public const uint WS_EX_APPWINDOW = 0x00040000;
     public const uint WS_POPUP = 0x80000000;
     public const uint WS_CHILD = 0x40000000;
     public const uint LWA_ALPHA = 0x00000002;
@@ -50,6 +52,7 @@ internal static class DesktopNative
     public const int SW_HIDE = 0;
     public const int SW_SHOW = 5;
     public const int SW_RESTORE = 9;
+    public const int SW_SHOWNA = 8;
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr FindWindowW(string? lpClassName, string? lpWindowName);
