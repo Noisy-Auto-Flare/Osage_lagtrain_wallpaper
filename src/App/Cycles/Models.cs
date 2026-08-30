@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 namespace OsageLagtrain.App.Cycles;
 
 /// <summary>Thrown when scene.json / settings.json / history.json fails schema validation. Never silently ignored.</summary>
-public sealed class SchemaValidationException : Exception
+public class SchemaValidationException : Exception
 {
     public string JsonPath { get; }
     public SchemaValidationException(string message, string jsonPath = "") : base(message)

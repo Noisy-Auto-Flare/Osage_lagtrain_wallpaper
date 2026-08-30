@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -15,5 +16,20 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\App\Cycles\Models.cs" Link="Cycles\Models.cs" />
+    <Compile Include="..\App\Desktop\DesktopTopology.cs" Link="Desktop\DesktopTopology.cs" />
+    <Compile Include="..\App\Desktop\IDesktopInterop.cs" Link="Desktop\IDesktopInterop.cs" />
+    <Compile Include="..\App\Desktop\DesktopNative.cs" Link="Desktop\DesktopNative.cs" />
+    <Compile Include="..\App\Desktop\DisplayManager.cs" Link="Desktop\DisplayManager.cs" />
+    <Compile Include="..\App\Desktop\DesktopLayerHost.cs" Link="Desktop\DesktopLayerHost.cs" />
+    <Compile Include="..\App\Desktop\NativeDesktopInterop.cs" Link="Desktop\NativeDesktopInterop.cs" />
+    <Compile Include="..\App\WindowMonitor\WindowMonitorTypes.cs" Link="WindowMonitor\WindowMonitorTypes.cs" />
+    <Compile Include="..\App\WindowMonitor\IWindowInterop.cs" Link="WindowMonitor\IWindowInterop.cs" />
+    <Compile Include="..\App\WindowMonitor\WindowMonitor.cs" Link="WindowMonitor\WindowMonitor.cs" />
+    <Compile Include="..\App\WindowMonitor\NativeWindowInterop.cs" Link="WindowMonitor\NativeWindowInterop.cs" />
+    <Compile Include="..\App\Cycles\CycleModels.cs" Link="Cycles\CycleModels.cs" />
+    <Compile Include="..\App\Cycles\HistoryStore.cs" Link="Cycles\HistoryStore.cs" />
+    <Compile Include="..\App\Cycles\SelectionPolicy.cs" Link="Cycles\SelectionPolicy.cs" />
+    <Compile Include="..\App\Cycles\CycleStore.cs" Link="Cycles\CycleStore.cs" />
+    <Compile Include="..\App\Cycles\PreloadCache.cs" Link="Cycles\PreloadCache.cs" />
   </ItemGroup>
 </Project>

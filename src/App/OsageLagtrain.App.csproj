@@ -16,7 +16,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64;x86;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
-    <CsWin32Include>SetProcessDpiAwarenessContext,GetDpiForWindow,GetWindowDpiAwarenessContext,AreDpiAwarenessContextsEqual</CsWin32Include>
+    <CsWin32Include>SetProcessDpiAwarenessContext,GetDpiForWindow,GetWindowDpiAwarenessContext,AreDpiAwarenessContextsEqual,GetDpiForMonitor,FindWindowW,GetWindowLongPtrW,SetWindowLongPtrW,SendMessageTimeoutW,SetParent,SetWindowPos,GetWindow,FindWindowExW,EnumWindows,RegisterWindowMessageW,SetWinEventHook,UnhookWinEvent,GetWindowThreadProcessId,SetLayeredWindowAttributes,GetWindowRect,MapWindowPoints,EnumDisplayMonitors,GetMonitorInfoW,SystemParametersInfoW,GetSystemMetrics,GetDpiForSystem,MonitorFromWindow,DwmGetWindowAttribute,SHQueryUserNotificationState,IsZoomed,IsWindowVisible,IsIconic,GetAncestor,GetWindowLongW,GetForegroundWindow,GetClassNameW,GetDesktopWindow,GetShellWindow,StrCmpLogicalW</CsWin32Include>
     <AssemblyName>OsageLagtrain</AssemblyName>
     <RootNamespace>OsageLagtrain.App</RootNamespace>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
