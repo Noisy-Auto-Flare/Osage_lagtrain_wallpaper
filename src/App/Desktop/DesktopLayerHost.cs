@@ -128,8 +128,46 @@ public sealed partial class DesktopLayerHost : IDisposable
         }
         else
         {
-            var workerW = FindWorkerW();
+            var workerW = FindWorkerW_Unified(_interop.FindWindow("Progman", null), false);
             return workerW != IntPtr.Zero;
         }
+    }
+
+    public IntPtr FindWorkerW_Unified(IntPtr progman, bool isRaised)
+    {
+        // Try raised direct first when requested, then classic enum; unify to handle both topologies
+        if (isRaised)
+        {
+            if (progman != IntPtr.Zero)
+            {
+                var raisedW = _interop.FindWindowEx(progman, IntPtr.Zero, "WorkerW", null);
+                if (raisedW != IntPtr.Zero) return raisedW;
+            }
+        }
+        // Classic: EnumWindows find host with SHELLDLL_DefView -> FindWindowEx(NULL, host, WorkerW)
+        IntPtr foundWorkerW = IntPtr.Zero;
+        _interop.EnumWindows((hWnd, lParam) =>
+        {
+            var defView = _interop.FindWindowEx(hWnd, IntPtr.Zero, "SHELLDLL_DefView", null);
+            if (defView != IntPtr.Zero)
+            {
+                var workerW = _interop.FindWindowEx(IntPtr.Zero, hWnd, "WorkerW", null);
+                if (workerW != IntPtr.Zero) foundWorkerW = workerW;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        if (foundWorkerW != IntPtr.Zero) return foundWorkerW;
+        // Fallback next-sibling after Progman (Lively pattern)
+        if (progman == IntPtr.Zero) progman = _interop.FindWindow("Progman", null);
+        if (progman != IntPtr.Zero)
+        {
+            var next = _interop.FindWindowEx(IntPtr.Zero, progman, "WorkerW", null);
+            if (next != IntPtr.Zero) return next;
+            // Raised direct also tried for classic as last resort (covers 24H2 hybrid)
+            var raisedDirect = _interop.FindWindowEx(progman, IntPtr.Zero, "WorkerW", null);
+            if (raisedDirect != IntPtr.Zero) return raisedDirect;
+        }
+        return IntPtr.Zero;
     }
 }

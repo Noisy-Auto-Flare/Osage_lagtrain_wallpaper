@@ -6,7 +6,7 @@ internal static class DesktopNative
 {
     public const int GWL_EXSTYLE = -20;
     public const int GWL_STYLE = -16;
-    public const uint WS_EX_NOREDIRECTIONBITMAP = 0x00000008;
+    public const uint WS_EX_NOREDIRECTIONBITMAP = 0x00200000;
     public const uint WS_EX_LAYERED = 0x00080000;
     public const uint WS_EX_TOOLWINDOW = 0x00000080;
     public const uint WS_EX_APPWINDOW = 0x00040000;

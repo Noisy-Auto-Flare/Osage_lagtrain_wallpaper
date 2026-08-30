@@ -260,14 +260,12 @@ public partial class App : Application
                         }
                         if (!attached)
                         {
-                            // Fallback: Attach failed (WorkerW not found on classic / missing SHELLDLL_DefView on raised) — do NOT hide forever.
-                            // Show fullscreen borderless window as fallback so idleColor #b2b2b2 and wallpaper frames still appear.
-                            // Keep TOOLWINDOW + not in switchers so it doesn't pollute Alt+Tab/taskbar.
+                            // WorkerW/DefView not found — keep host hidden (SW_HIDE) until WorkerW appears, retry via healing.
+                            // DO NOT use visible SW_SHOWNA covering screen (covers icons, GDI dead on raised).
+                            try { ShowWindow(hwndCopy, 0); } catch { } // SW_HIDE
                             try { EnsureWindowBorderless(hwndCopy); } catch { }
-                            try { EnsureWallpaperBehindDesktop(hwndCopy); } catch { }
-                            try { ShowWindow(hwndCopy, 8); } catch { } // SW_SHOWNA fallback visible borderless
-                            System.Diagnostics.Debug.WriteLine($"[App] Attach returned false - fallback SW_SHOWNA shown hwnd=0x{hwndCopy.ToInt64():X} (WorkerW/DefView not found, fallback keeps wallpaper visible)");
-                            Console.WriteLine($"[App] Attach returned false - fallback SW_SHOWNA shown hwnd=0x{hwndCopy.ToInt64():X}");
+                            System.Diagnostics.Debug.WriteLine($"[App] Attach returned false - kept SW_HIDE hwnd=0x{hwndCopy.ToInt64():X} retry scheduled via healing (WorkerW not found)");
+                            Console.WriteLine($"[App] Attach returned false - kept hidden retry via healing hwnd=0x{hwndCopy.ToInt64():X}");
                         }
                         else
                         {
@@ -295,8 +293,8 @@ public partial class App : Application
                     try { attached = desktopHostCopy.Attach(hwndCopy); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[App] background Attach (no dispatcher) failed: {ex.Message}"); }
                     if (!attached)
                     {
-                        try { EnsureWallpaperBehindDesktop(hwndCopy); } catch { }
-                        try { ShowWindow(hwndCopy, 8); } catch { }
+                        try { ShowWindow(hwndCopy, 0); } catch { } // SW_HIDE hidden until WorkerW
+                        try { EnsureWindowBorderless(hwndCopy); } catch { }
                     }
                     else
                     {
