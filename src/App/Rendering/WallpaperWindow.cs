@@ -4,41 +4,24 @@ using OsageLagtrain.App.Desktop;
 
 namespace OsageLagtrain.App.Rendering;
 
-/// <summary>
-/// Rendering engine — idle #b2b2b2 + @fps flip + DPI physical.
-/// WindowStyle None, AllowsTransparency False, Topmost False parented to WorkerW.
-/// Decision: raised → CompositionHost DirectComposition CreateTargetForHwnd(hwnd,true) + Visual identity transform 1:1 physical (FeatherWall CompositionHost) — единственный фикс 55% bare на 150%;
-/// classic fallback → WriteableBitmap + Image.
-/// Idle: SolidColorBrush #b2b2b2 configurable. Play: DispatcherTimer Interval=1000/fps (для ≤30fps B&W — без 60Hz overdraw; не CompositionTarget.Rendering)
-/// Must NOT: PerMonitorV2 без identity, GetDesktopWindow для multi-mon, WS_EX_LAYERED без SetLayeredWindowAttributes 255, CompositionTarget.Rendering ambiguity.
-/// </summary>
 public sealed class WallpaperWindow : IDisposable
 {
-    // Window style constants per spec (for verification via tests and grep)
     public const string WindowStyle_Value = "None";
     public const bool AllowsTransparency_Value = false;
     public const bool Topmost_Value = false;
-    // Must NOT use WS_EX_LAYERED without 255 — we always call SetLayeredWindowAttributes 255 when layered
     public const byte LayeredAlpha255 = 255;
-
-    // Idle color — initial fill must be #b2b2b2 RGB 178,178,178 configurable via Settings idleColor
     public static readonly string DefaultIdleColorHex = "#b2b2b2";
     public static readonly byte IdleR = 0xB2; // 178
     public static readonly byte IdleG = 0xB2;
     public static readonly byte IdleB = 0xB2;
-    // SolidColorBrush #b2b2b2 — in code this is Color.FromArgb(0xFF,0xB2,0xB2,0xB2) or new SolidColorBrush(Color.FromRgb(0xB2,0xB2,0xB2))
-
-    // WM handlers per spec — handle WM_DPICHANGED, WM_DISPLAYCHANGE → re-layout + re-Probe heal
     public const uint WM_DPICHANGED = 0x02E0;
     public const uint WM_DISPLAYCHANGE = 0x007E;
-    // Must NOT use GetDesktopWindow for multi-mon — use DisplayManager.VirtualScreenBounds instead
 
     private readonly IDesktopInterop _interop;
     private readonly DisplayManager _display;
     private readonly CompositionHost _compositionHost;
     private readonly DesktopLayerHost _layerHost;
 
-    // Timer: DispatcherTimer Interval=1000/fps — not CompositionTarget.Rendering
     private TimeSpan _timerInterval;
     private bool _usesDispatcherTimer = true;
     private bool _usesCompositionTargetRendering = false;

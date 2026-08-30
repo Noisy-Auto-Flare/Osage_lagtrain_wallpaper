@@ -43,3 +43,6 @@ cycles/**/*.mp4
 
 .omo/
 
+
+# Dist zip
+*.zip

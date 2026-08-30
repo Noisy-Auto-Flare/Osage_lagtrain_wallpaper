@@ -3,8 +3,12 @@ using System.Runtime.InteropServices;
 
 namespace OsageLagtrain.App.WindowMonitor;
 
-public sealed class NativeWindowInterop : IWindowInterop
+public sealed class NativeWindowInterop : IWindowInterop, IDisposable
 {
+    private readonly Dictionary<IntPtr, GCHandle> _hookHandles = new();
+    private readonly object _handleLock = new();
+    private bool _disposed;
+
     public IntPtr GetForegroundWindow() => NativeMethods.GetForegroundWindow();
     public IntPtr GetDesktopWindow() => NativeMethods.GetDesktopWindow();
     public IntPtr GetShellWindow() => NativeMethods.GetShellWindow();
@@ -86,15 +90,46 @@ public sealed class NativeWindowInterop : IWindowInterop
     }
     public IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmod, WindowMonitorWinEventDelegate del, uint idProcess, uint idThread, uint dwFlags)
     {
-        // Adapt delegate
         WinEventProc proc = (hHook, eventType, hwnd, idObj, idChild, tid, time) => del(hHook, eventType, hwnd, idObj, idChild, tid, time);
         var gch = GCHandle.Alloc(proc);
-        // Caller keeps GCHandle; we leak here intentionally if caller doesn't hold — but NativeWindowInterop tracks via WindowMonitor.
-        // For native path, WindowMonitor keeps its own GCHandle; this wrapper just forwards.
-        return NativeMethods.SetWinEventHook(eventMin, eventMax, hmod, proc, idProcess, idThread, dwFlags);
+        var hook = NativeMethods.SetWinEventHook(eventMin, eventMax, hmod, proc, idProcess, idThread, dwFlags);
+        if (hook != IntPtr.Zero)
+        {
+            lock (_handleLock) _hookHandles[hook] = gch;
+        }
+        else
+        {
+            if (gch.IsAllocated) gch.Free();
+        }
+        return hook;
     }
-    public bool UnhookWinEvent(IntPtr hWinEventHook) => NativeMethods.UnhookWinEvent(hWinEventHook);
+    public bool UnhookWinEvent(IntPtr hWinEventHook)
+    {
+        var ok = NativeMethods.UnhookWinEvent(hWinEventHook);
+        lock (_handleLock)
+        {
+            if (_hookHandles.TryGetValue(hWinEventHook, out var gch))
+            {
+                if (gch.IsAllocated) gch.Free();
+                _hookHandles.Remove(hWinEventHook);
+            }
+        }
+        return ok;
+    }
     public void Sleep(int ms) => Thread.Sleep(ms);
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        lock (_handleLock)
+        {
+            foreach (var kv in _hookHandles)
+                if (kv.Value.IsAllocated) kv.Value.Free();
+            _hookHandles.Clear();
+        }
+        GC.SuppressFinalize(this);
+    }
 
     private delegate void WinEventProc(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
 

@@ -16,16 +16,22 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\App\Cycles\Models.cs" Link="Cycles\Models.cs" />
+    <Compile Include="..\App\Cycles\SceneMode.cs" Link="Cycles\SceneMode.cs" />
+    <Compile Include="..\App\Cycles\SceneConfig.cs" Link="Cycles\SceneConfig.cs" />
+    <Compile Include="..\App\Cycles\SettingsConfig.cs" Link="Cycles\SettingsConfig.cs" />
+    <Compile Include="..\App\Cycles\History.cs" Link="Cycles\History.cs" />
     <Compile Include="..\App\Desktop\DesktopTopology.cs" Link="Desktop\DesktopTopology.cs" />
     <Compile Include="..\App\Desktop\IDesktopInterop.cs" Link="Desktop\IDesktopInterop.cs" />
     <Compile Include="..\App\Desktop\DesktopNative.cs" Link="Desktop\DesktopNative.cs" />
     <Compile Include="..\App\Desktop\DisplayManager.cs" Link="Desktop\DisplayManager.cs" />
     <Compile Include="..\App\Desktop\DesktopLayerHost.cs" Link="Desktop\DesktopLayerHost.cs" />
+    <Compile Include="..\App\Desktop\DesktopLayerHost.Attach.cs" Link="Desktop\DesktopLayerHost.Attach.cs" />
+    <Compile Include="..\App\Desktop\DesktopLayerHost.Healing.cs" Link="Desktop\DesktopLayerHost.Healing.cs" />
     <Compile Include="..\App\Desktop\NativeDesktopInterop.cs" Link="Desktop\NativeDesktopInterop.cs" />
     <Compile Include="..\App\WindowMonitor\WindowMonitorTypes.cs" Link="WindowMonitor\WindowMonitorTypes.cs" />
     <Compile Include="..\App\WindowMonitor\IWindowInterop.cs" Link="WindowMonitor\IWindowInterop.cs" />
     <Compile Include="..\App\WindowMonitor\WindowMonitor.cs" Link="WindowMonitor\WindowMonitor.cs" />
+    <Compile Include="..\App\WindowMonitor\WindowMonitor.Lifecycle.cs" Link="WindowMonitor\WindowMonitor.Lifecycle.cs" />
     <Compile Include="..\App\WindowMonitor\NativeWindowInterop.cs" Link="WindowMonitor\NativeWindowInterop.cs" />
     <Compile Include="..\App\Cycles\CycleModels.cs" Link="Cycles\CycleModels.cs" />
     <Compile Include="..\App\Cycles\HistoryStore.cs" Link="Cycles\HistoryStore.cs" />
@@ -42,6 +48,8 @@
     <Compile Include="..\App\Ui\SceneListItem.cs" Link="Ui\SceneListItem.cs" />
     <Compile Include="..\App\Ui\SettingsStore.cs" Link="Ui\SettingsStore.cs" />
     <Compile Include="..\App\Ui\SettingsViewModel.cs" Link="Ui\SettingsViewModel.cs" />
+    <Compile Include="..\App\Ui\SettingsViewModel.Preview.cs" Link="Ui\SettingsViewModel.Preview.cs" />
+    <Compile Include="..\App\Ui\SettingsViewModel.Persistence.cs" Link="Ui\SettingsViewModel.Persistence.cs" />
     <Compile Include="..\App\Shell\AutostartManager.cs" Link="Shell\AutostartManager.cs" />
     <Compile Include="..\App\Shell\SingleInstanceManager.cs" Link="Shell\SingleInstanceManager.cs" />
     <Compile Include="..\App\Shell\EnableManager.cs" Link="Shell\EnableManager.cs" />

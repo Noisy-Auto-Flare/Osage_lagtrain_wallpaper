@@ -21,10 +21,8 @@ public sealed partial class SettingsWindow : Window
     {
         InitializeComponent();
         _vm = vm;
-        // preview timer @ fps reuse FrameScheduler interval via DispatcherTimer
         _previewTimer = new DispatcherTimer();
         _previewTimer.Tick += OnPreviewTick;
-
         this.Activated += OnActivated;
         this.Closed += (_, _) => { _previewTimer.Stop(); _vm.Dispose(); };
     }
@@ -34,7 +32,6 @@ public sealed partial class SettingsWindow : Window
         var settingsStore = new SettingsStore();
         var cfg = settingsStore.Load();
         var cycleStore = new CycleStoreAdapter(cfg.CyclesRoot);
-        // WindowMonitor hook — no-op if not available
         Action<SettingsConfig>? update = null;
         try
         {
@@ -57,14 +54,12 @@ public sealed partial class SettingsWindow : Window
 
     private async Task OnLoadedAsync()
     {
-        // bind cyclesRoot
         try
         {
             CyclesRootTextBox.Text = _vm.GlobalSettings.CyclesRoot;
             GlobalDelayBox.Value = _vm.GlobalSettings.PostEventDelayMs;
             NoRepeatBox.Value = _vm.GlobalSettings.NoRepeatWindow;
             IdleColorBox.Text = _vm.GlobalSettings.IdleColor;
-            // selectionPolicy combo
             for (int i = 0; i < SelectionPolicyCombo.Items.Count; i++)
             {
                 if (SelectionPolicyCombo.Items[i] is Microsoft.UI.Xaml.Controls.ComboBoxItem ci && (ci.Tag as string) == _vm.GlobalSettings.SelectionPolicy)
@@ -131,7 +126,6 @@ public sealed partial class SettingsWindow : Window
         var path = _vm.CurrentPreviewFramePath;
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
         {
-            // idle color #b2b2b2
             PreviewImage.Source = null;
             return;
         }
@@ -169,7 +163,7 @@ public sealed partial class SettingsWindow : Window
         _previewTimer.Stop();
     }
 
-    private void OnLoopToggled(object sender, RoutedEventArgs e) { /* respects mode but preview loop toggle: restart timer */ UpdatePreviewInterval(); }
+    private void OnLoopToggled(object sender, RoutedEventArgs e) { UpdatePreviewInterval(); }
 
     private void OnSliderChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
@@ -185,7 +179,6 @@ public sealed partial class SettingsWindow : Window
         if (double.IsNaN(args.NewValue)) return;
         int fps = (int)args.NewValue;
         fps = Math.Clamp(fps, 1, 30);
-        // avoid re-entrancy when we set box programmatically
         if (_vm.SelectedScene != null && _vm.SelectedScene.Fps == fps) return;
         _vm.SelectedFps = fps;
         UpdatePreviewInterval();
@@ -240,11 +233,7 @@ public sealed partial class SettingsWindow : Window
         IdleColorPicker.Visibility = IdleColorPicker.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private async void OnBrowseClicked(object sender, RoutedEventArgs e)
-    {
-        await _vm.BrowseCyclesRootAsync();
-        CyclesRootTextBox.Text = _vm.CyclesRoot;
-    }
+    private async void OnBrowseClicked(object sender, RoutedEventArgs e) { await _vm.BrowseCyclesRootAsync(); CyclesRootTextBox.Text = _vm.CyclesRoot; }
 
     private async void OnAddSceneClicked(object sender, RoutedEventArgs e)
     {
@@ -256,7 +245,6 @@ public sealed partial class SettingsWindow : Window
 
     private void OnSaveClicked(object sender, RoutedEventArgs e)
     {
-        // Save is debounced automatically; this button forces flush if visible
         StatusText.Text = "Saved (debounced 500ms → atomic write + Reload + UpdateConfig)";
     }
 
