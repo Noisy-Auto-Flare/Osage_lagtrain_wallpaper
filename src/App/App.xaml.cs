@@ -32,6 +32,27 @@ public partial class App : Application
     private const uint NIF_ICON = 0x00000002;
     private const uint NIF_TIP = 0x00000004;
     private const uint WM_TRAYICON = 0x8001;
+    private const uint WM_COMMAND = 0x0111;
+    private const uint WM_NULL = 0x0000;
+    private const int GWLP_WNDPROC = -4;
+    private const int WM_LBUTTONUP = 0x0202;
+    private const int WM_LBUTTONDBLCLK = 0x0203;
+    private const int WM_RBUTTONUP = 0x0205;
+    private const int WM_RBUTTONDBLCLK = 0x0206;
+    private const uint MF_STRING = 0x00000000;
+    private const uint MF_CHECKED = 0x00000008;
+    private const uint TPM_LEFTALIGN = 0x0000;
+    private const uint TPM_RIGHTBUTTON = 0x0002;
+    private const uint TPM_RETURNCMD = 0x0100;
+    private const int ID_TRAY_SHOW = 1001;
+    private const int ID_TRAY_ENABLE = 1002;
+    private const int ID_TRAY_AUTOSTART = 1003;
+    private const int ID_TRAY_EXIT = 1004;
+
+    private IntPtr _oldWndProc = IntPtr.Zero;
+    private WndProcDelegate? _wndProcDelegate;
+
+    private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern bool Shell_NotifyIconW(uint dwMessage, ref NOTIFYICONDATA lpData);
@@ -59,6 +80,33 @@ public partial class App : Application
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowLongPtrW(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr CallWindowProcW(IntPtr lpPrevWndFunc, IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CreatePopupMenu();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool AppendMenuW(IntPtr hMenu, uint uFlags, IntPtr uIDNewItem, string lpNewItem);
+
+    [DllImport("user32.dll")]
+    private static extern int TrackPopupMenu(IntPtr hMenu, uint uFlags, int x, int y, int nReserved, IntPtr hWnd, IntPtr prcRect);
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyMenu(IntPtr hMenu);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool PostMessageW(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT { public int X; public int Y; }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NOTIFYICONDATA
@@ -138,6 +186,7 @@ public partial class App : Application
         try { _windowMonitor.Start(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[App] WindowMonitor Start failed: {ex.Message}"); }
 
         try { CreateTrayIcon(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[App] Tray create failed: {ex.Message}"); }
+        try { InstallTrayWndProc(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[App] WndProc hook failed: {ex.Message}"); }
 
         _wallpaperHostWindow.Closed += (_, _) => Cleanup();
 
@@ -281,6 +330,150 @@ public partial class App : Application
         catch { }
     }
 
+    private void InstallTrayWndProc()
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        if (_oldWndProc != IntPtr.Zero) return;
+        _wndProcDelegate = WndProc;
+        IntPtr newWndProc = Marshal.GetFunctionPointerForDelegate(_wndProcDelegate);
+        _oldWndProc = GetWindowLongPtrW(_hwnd, GWLP_WNDPROC);
+        IntPtr prev = SetWindowLongPtrW(_hwnd, GWLP_WNDPROC, newWndProc);
+        if (prev != IntPtr.Zero) _oldWndProc = prev;
+        System.Diagnostics.Debug.WriteLine($"[App] WndProc hook installed hwnd=0x{_hwnd.ToInt64():X} old=0x{_oldWndProc.ToInt64():X}");
+        Console.WriteLine($"[App] WndProc hook installed hwnd=0x{_hwnd.ToInt64():X}");
+    }
+
+    private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        try
+        {
+            // SingleInstance registered message first
+            if (_trayLogic != null && _trayLogic.HandleWindowMessage(msg, wParam, lParam))
+                return IntPtr.Zero;
+            if (_singleInstance != null && msg == _singleInstance.ShowSettingsMessageId && msg != 0)
+            {
+                try { ShowSettings(); } catch { }
+                return IntPtr.Zero;
+            }
+
+            if (msg == WM_TRAYICON)
+            {
+                uint trayId = (uint)wParam.ToInt64();
+                int mouseMsg = lParam.ToInt32();
+                // also handle low-word extraction for 64-bit
+                if (trayId == 1)
+                {
+                    if (mouseMsg == WM_RBUTTONUP)
+                    {
+                        ShowTrayMenu();
+                        return IntPtr.Zero;
+                    }
+                    if (mouseMsg == WM_LBUTTONUP)
+                    {
+                        ShowTrayMenu();
+                        return IntPtr.Zero;
+                    }
+                    if (mouseMsg == WM_LBUTTONDBLCLK)
+                    {
+                        try { ShowSettings(); } catch { }
+                        return IntPtr.Zero;
+                    }
+                    if (mouseMsg == WM_RBUTTONDBLCLK)
+                    {
+                        ShowTrayMenu();
+                        return IntPtr.Zero;
+                    }
+                }
+            }
+
+            if (msg == WM_COMMAND)
+            {
+                int id = wParam.ToInt32() & 0xFFFF;
+                if (id >= ID_TRAY_SHOW && id <= ID_TRAY_EXIT)
+                {
+                    HandleTrayMenuCommand(id);
+                    return IntPtr.Zero;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[App] WndProc error msg=0x{msg:X} {ex.Message}");
+        }
+
+        if (_oldWndProc != IntPtr.Zero)
+        {
+            try { return CallWindowProcW(_oldWndProc, hWnd, msg, wParam, lParam); } catch { }
+        }
+        return IntPtr.Zero;
+    }
+
+    private void ShowTrayMenu()
+    {
+        if (_trayLogic == null || _hwnd == IntPtr.Zero) return;
+        POINT pt;
+        try { GetCursorPos(out pt); } catch { pt = new POINT { X = 0, Y = 0 }; }
+        IntPtr hMenu = IntPtr.Zero;
+        try
+        {
+            hMenu = CreatePopupMenu();
+            if (hMenu == IntPtr.Zero) return;
+            var menu = _trayLogic.BuildMenu();
+            // menu order: Show Settings, Enable, Autostart, Exit
+            bool enableChecked = _trayLogic.IsEnableChecked;
+            bool autostartChecked = _trayLogic.IsAutostartChecked;
+            AppendMenuW(hMenu, MF_STRING, (IntPtr)ID_TRAY_SHOW, "Show Settings");
+            AppendMenuW(hMenu, enableChecked ? (MF_STRING | MF_CHECKED) : MF_STRING, (IntPtr)ID_TRAY_ENABLE, "Enable");
+            AppendMenuW(hMenu, autostartChecked ? (MF_STRING | MF_CHECKED) : MF_STRING, (IntPtr)ID_TRAY_AUTOSTART, "Autostart");
+            AppendMenuW(hMenu, MF_STRING, (IntPtr)ID_TRAY_EXIT, "Exit");
+            try { SetForegroundWindow(_hwnd); } catch { }
+            int cmd = TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD, pt.X, pt.Y, 0, _hwnd, IntPtr.Zero);
+            // Required to clear stuck menu
+            try { PostMessageW(_hwnd, WM_NULL, IntPtr.Zero, IntPtr.Zero); } catch { }
+            if (cmd != 0)
+                HandleTrayMenuCommand(cmd);
+            else
+                System.Diagnostics.Debug.WriteLine($"[App] ShowTrayMenu dismissed pt={pt.X},{pt.Y}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[App] ShowTrayMenu failed: {ex.Message}");
+        }
+        finally
+        {
+            if (hMenu != IntPtr.Zero)
+                try { DestroyMenu(hMenu); } catch { }
+        }
+    }
+
+    private void HandleTrayMenuCommand(int id)
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine($"[App] Tray WM_COMMAND id={id}");
+            Console.WriteLine($"[App] Tray WM_COMMAND id={id}");
+            switch (id)
+            {
+                case ID_TRAY_SHOW:
+                    ShowSettings();
+                    break;
+                case ID_TRAY_ENABLE:
+                    _trayLogic?.ToggleEnable();
+                    break;
+                case ID_TRAY_AUTOSTART:
+                    _trayLogic?.ToggleAutostart();
+                    break;
+                case ID_TRAY_EXIT:
+                    ExitApp();
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[App] HandleTrayMenuCommand failed id={id} {ex.Message}");
+        }
+    }
+
     private sealed class NativeTray : IDisposable
     {
         private readonly IntPtr _hwnd;
@@ -408,6 +601,12 @@ public partial class App : Application
 
     private void ExitApp()
     {
+        try
+        {
+            if (_hwnd != IntPtr.Zero && _oldWndProc != IntPtr.Zero)
+                try { SetWindowLongPtrW(_hwnd, GWLP_WNDPROC, _oldWndProc); } catch { }
+        }
+        catch { }
         try { _windowMonitor?.Dispose(); } catch { }
         try { _desktopHost?.Dispose(); } catch { }
         try { _nativeTray?.Dispose(); } catch { }
@@ -418,6 +617,12 @@ public partial class App : Application
 
     private void Cleanup()
     {
+        try
+        {
+            if (_hwnd != IntPtr.Zero && _oldWndProc != IntPtr.Zero)
+                try { SetWindowLongPtrW(_hwnd, GWLP_WNDPROC, _oldWndProc); _oldWndProc = IntPtr.Zero; } catch { }
+        }
+        catch { }
         try { _nativeTray?.Dispose(); _nativeTray = null; } catch { }
         try { _windowMonitor?.Dispose(); } catch { }
         try { _desktopHost?.Dispose(); } catch { }

@@ -44,9 +44,29 @@ internal static partial class Program
         if (args.Contains("--verify-cycles"))
         {
             var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? AppContext.BaseDirectory) ?? AppContext.BaseDirectory;
-            var template = Path.Combine(exeDir, "cycles", "_template", "scene.json");
-            Console.WriteLine($"cyclesRoot: {Path.Combine(exeDir, "cycles")}");
-            Console.WriteLine(File.Exists(template) ? "template OK, 0 real scenes" : "template missing");
+            var cyclesRoot = Path.Combine(exeDir, "cycles");
+            var template = Path.Combine(cyclesRoot, "_template", "scene.json");
+            Console.WriteLine($"cyclesRoot: {cyclesRoot}");
+            if (!File.Exists(template))
+            {
+                Console.WriteLine("template missing");
+            }
+            else
+            {
+                try
+                {
+                    var store = new global::OsageLagtrain.App.Cycles.CycleStore(cyclesRoot);
+                    var all = store.LoadAll();
+                    int realCount = all.Count(c => c.Id != "template_scene");
+                    Console.WriteLine($"template OK, {realCount} real scenes");
+                    foreach (var c in all)
+                        Console.WriteLine($" - {c.Id} ({c.Frames.Count} frames) dir={Path.GetFileName(c.DirPath)} {(c.Id == "template_scene" ? "[template]" : "")}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"template OK, verify failed: {ex.Message}");
+                }
+            }
             if (!args.Contains("--diag"))
                 return;
         }
