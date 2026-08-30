@@ -31,5 +31,9 @@
     <Compile Include="..\App\Cycles\SelectionPolicy.cs" Link="Cycles\SelectionPolicy.cs" />
     <Compile Include="..\App\Cycles\CycleStore.cs" Link="Cycles\CycleStore.cs" />
     <Compile Include="..\App\Cycles\PreloadCache.cs" Link="Cycles\PreloadCache.cs" />
+    <Compile Include="..\App\Rendering\FrameScheduler.cs" Link="Rendering\FrameScheduler.cs" />
+    <Compile Include="..\App\Rendering\NativeRenderingInterop.cs" Link="Rendering\NativeRenderingInterop.cs" />
+    <Compile Include="..\App\Rendering\CompositionHost.cs" Link="Rendering\CompositionHost.cs" />
+    <Compile Include="..\App\Rendering\WallpaperWindow.cs" Link="Rendering\WallpaperWindow.cs" />
   </ItemGroup>
 </Project>

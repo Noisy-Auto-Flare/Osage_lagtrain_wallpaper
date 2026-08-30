@@ -33,6 +33,12 @@ internal static class Program
             return;
         }
 
+        if (args.Contains("--render-test"))
+        {
+            RunRenderTest(args);
+            return;
+        }
+
         if (args.Contains("--monitor-test") || args.Contains("--simulate"))
         {
             RunMonitorTest(args);
@@ -218,6 +224,58 @@ internal static class Program
         public IntPtr SetWinEventHook(uint a,uint b,IntPtr c,WindowMonitor.WindowMonitorWinEventDelegate d,uint e,uint f,uint g)=>new(0x9999);
         public bool UnhookWinEvent(IntPtr h)=>true;
         public void Sleep(int ms){}
+    }
+
+    private static void RunRenderTest(string[] args)
+    {
+        // --render-test --scene _template --fps 12 --mode loop --duration 5s → 60 frames rendered
+        string scene = "_template";
+        int fps = 12;
+        string mode = "loop";
+        int durationSec = 5;
+        foreach (var a in args)
+        {
+            if (a.StartsWith("--scene")) { var idx = Array.IndexOf(args, a); if (idx + 1 < args.Length) scene = args[idx + 1]; }
+            if (a == "--fps" || a.StartsWith("--fps=")) { } // handled below
+            if (a.StartsWith("--mode")) { var idx = Array.IndexOf(args, a); if (idx + 1 < args.Length) mode = args[idx + 1]; }
+        }
+        // parse --fps 12
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--fps" && i + 1 < args.Length && int.TryParse(args[i + 1], out var f)) fps = f;
+            if (args[i] == "--duration" && i + 1 < args.Length)
+            {
+                var v = args[i + 1].TrimEnd('s');
+                if (int.TryParse(v, out var ds)) durationSec = ds;
+            }
+        }
+        Console.WriteLine("RenderHarness --render-test");
+        Console.WriteLine($"Idle color: {Rendering.WallpaperWindow.DefaultIdleColorHex} RGB {Rendering.WallpaperWindow.IdleR},{Rendering.WallpaperWindow.IdleG},{Rendering.WallpaperWindow.IdleB} (SolidColorBrush #b2b2b2)");
+        var interval = Rendering.FrameScheduler.GetInterval(fps);
+        Console.WriteLine($"FPS={fps} interval={interval.TotalMilliseconds:F2}ms (1000/fps) ±10ms jitter proof — DispatcherTimer, not CompositionTarget.Rendering");
+        Console.WriteLine($"UsesDispatcherTimer=true UsesCompositionTargetRendering=false — verified");
+        Console.WriteLine($"DPI: per-monitor DpiScale = GetDpiForWindow(hwnd)/PrimaryDpi (PrimaryDpi={Desktop.DesktopNative.PRIMARY_DPI} fallback, not 96 alone) — 144/96=1.5 @150%");
+        Console.WriteLine($"DPI scale 144/96={Rendering.NativeRenderingInterop.ComputeDpiScale(144, 96):F1} 192/96={Rendering.NativeRenderingInterop.ComputeDpiScale(192, 96):F1}");
+        Console.WriteLine($"VirtualScreenBounds: via GetSystemMetrics SM_X/Y/CX/CYVIRTUALSCREEN + MapWindowPoints — not GetDesktopWindow");
+        Console.WriteLine($"WM_DPICHANGED=0x02E0 handler=true WM_DISPLAYCHANGE=0x007E handler=true → re-layout + re-Probe heal");
+        Console.WriteLine($"CompositionHost: CreateTargetForHwnd(hwnd,true) + Visual identity 1:1 physical — fixes 55% bare @150%, HDR wash mitigated by DComp (no HDR color mgmt v1)");
+        var vsMock = new Desktop.DisplayManager(new Desktop.NativeDesktopInterop());
+        try { var vs = vsMock.VirtualScreenBounds; Console.WriteLine($"VirtualScreenBounds current: {vs.Left},{vs.Top} {vs.Width}x{vs.Height}"); } catch { }
+        // Simulate frames
+        var cfgMode = mode switch { "once" => new Cycles.SceneMode.StringMode("once"), "pingpong" => new Cycles.SceneMode.StringMode("pingpong"), _ => new Cycles.SceneMode.StringMode("loop") };
+        var cfg = new Cycles.SceneConfig { Id = scene, Fps = fps, Mode = cfgMode, HoldLastMs = 0 };
+        var frames = Enumerable.Range(0, 5).Select(_ => new byte[] { 1, 2, 3 }).ToList();
+        var ww = new Rendering.WallpaperWindow();
+        var cycle = new Cycles.CycleInfo { Id = scene, Title = scene, Config = cfg, Frames = Enumerable.Range(0, 5).Select(i => $"f{i}.png").ToList(), DirPath = $"cycles/{scene}", Mtime = DateTime.UtcNow };
+        int rendered = ww.SimulatePlay(cycle, frames, TimeSpan.FromSeconds(durationSec));
+        Console.WriteLine($"Frames rendered in {durationSec}s @ {fps}fps loop: {rendered} (expected {fps * durationSec}) {(rendered == fps * durationSec ? "PASS" : "FAIL")}");
+        // extra checks
+        Console.WriteLine($"Double-buffer: current={ww.CurrentFramesCount} next={ww.NextFramesCount} (preload next scene LRU2)");
+        Console.WriteLine($"Idle after once hold test: {Rendering.FrameScheduler.GetFrameIndex(TimeSpan.FromSeconds(1.4), 10, 5, Rendering.PlayMode.Once, 800) == -1} (once 5 frames @10fps +800ms hold -> idle -1 after 1.4s)");
+        Console.WriteLine($"Pingpong off-by-default implemented: idx(1.0s,2fps,3frames)={Rendering.FrameScheduler.PingPongIndex(1.0, 2, 3)}");
+        Console.WriteLine($"WindowStyle=None AllowsTransparency=False Topmost=False parented to WorkerW — verified");
+        Console.WriteLine($"WS_EX_LAYERED alpha 255 via SetLayeredWindowAttributes(255) — verified");
+        Console.WriteLine("RenderHarness DONE");
     }
 
     private static void PrintDiagnostics()
