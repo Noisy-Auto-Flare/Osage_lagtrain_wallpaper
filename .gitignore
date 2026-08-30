@@ -29,6 +29,9 @@ cycles/**/*.jpg
 cycles/**/*.jpeg
 cycles/**/*.webp
 cycles/**/*.mp4
+# Re-allow template placeholder PNG (must be tracked, 1x1 #b2b2b2)
+!cycles/_template/*.png
+!cycles/_template/**/*.png
 
 # OMO transient
 .omo/run-continuation/

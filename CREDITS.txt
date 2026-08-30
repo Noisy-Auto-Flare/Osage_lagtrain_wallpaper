@@ -1,0 +1,38 @@
+CREDITS — Osage Lagtrain Wallpaper
+================================
+
+Source / Источник:
+  Artist: Inabakumori (稲葉曇) — feat. Kaai Yuki
+  Track: Lagtrain (ラグトレイン) / Nukunuku
+  YouTube: https://www.youtube.com/watch?v=UnIhRpIT7nc
+  Published: 2020
+
+Usage / Использование:
+  - This project does NOT bundle Lagtrain frames.
+  - Template contains only a 1x1 placeholder PNG #b2b2b2 (cycles/_template/0001.png).
+  - Real frames must be extracted LOCALLY by the user for personal wallpaper use only.
+  - See docs/ffmpeg-recipe.md for yt-dlp + ffmpeg commands (mpdecimate, crop, eq=saturation=0).
+
+Legal / Право:
+  - Japan Copyright Act Article 30 — private use copy allowed, redistribution prohibited.
+  - US Fair Use (17 USC §107) — personal non-commercial use may be fair use, not for redistribution.
+  - YouTube Terms of Service — download only via official means; yt-dlp is at your own risk for personal archive.
+  - Do NOT commit real frames to git, do NOT redistribute the frames archive.
+  - If the rightsholder requests removal — delete local frames.
+
+Template / Шаблон:
+  cycles/_template/scene.json — id: template_scene, fps: 12, mode: once, holdLastMs: 800
+  cycles/_template/0001.png   — 1x1 pixel #b2b2b2 placeholder, valid PNG binary (69 bytes)
+  Copy _template to create your own scene: Copy-Item -Recurse cycles/_template cycles/my_scene
+
+Instructions / Инструкция:
+  1. Read docs/ffmpeg-recipe.md and extract frames locally.
+  2. Place frames as cycles/<your_id>/0001.png, 0002.png, ... (natural sort, 0001..9999).
+  3. Edit cycles/<your_id>/scene.json — set your id, fps, mode.
+  4. Replace this CREDITS.txt note if you use a different source — keep the fair-use warning.
+
+Disclaimer:
+  This wallpaper engine is an independent personal-use tool. Not affiliated with Inabakumori, Kaai Yuki, or YouTube.
+  Frames are NOT included. The author(s) of this tool assume no liability for misuse.
+
+— Personal use only, not for redistribution. —
