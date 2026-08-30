@@ -108,6 +108,33 @@ public partial class App : Application
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int MessageBoxW(IntPtr hWnd, string lpText, string lpCaption, uint uType);
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetParent(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr FindWindowW(string? lpClassName, string? lpWindowName);
+
+    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    private const int DWMWCP_DONOTROUND = 1;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private static readonly IntPtr HWND_BOTTOM = new(1);
+
+    private static void TryDisableRoundedCorners(IntPtr hwnd)
+    {
+        try { int pref = DWMWCP_DONOTROUND; DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, sizeof(int)); } catch { }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X; public int Y; }
 
@@ -908,6 +935,8 @@ public partial class App : Application
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new IntPtr(exVal));
         }
         catch { }
+        // Remove rounded corners (Win11 DWM) — must be after style changes
+        try { TryDisableRoundedCorners(hwnd); } catch { }
     }
 
     private static void HideHostWindowImmediate(IntPtr hwnd)
@@ -932,8 +961,27 @@ public partial class App : Application
         try
         {
             EnsureWindowBorderless(hwnd);
-            ShowWindow(hwnd, 8); // SW_SHOWNA - show without activate, stays below taskbar (taskbar is TOPMOST)
-            System.Diagnostics.Debug.WriteLine($"[App] EnsureWallpaperBehindDesktop SW_SHOWNA borderless hwnd=0x{hwnd.ToInt64():X}");
+            TryDisableRoundedCorners(hwnd);
+            // If top-level (fallback) and not already parented to WorkerW/Progman, parent to Progman so wallpaper sits behind desktop icons (SHELLDLL_DefView).
+            try
+            {
+                var parent = GetParent(hwnd);
+                if (parent == IntPtr.Zero)
+                {
+                    var progman = FindWindowW("Progman", null);
+                    if (progman != IntPtr.Zero)
+                    {
+                        SetParent(hwnd, progman);
+                        System.Diagnostics.Debug.WriteLine($"[App] EnsureWallpaperBehindDesktop SetParent to Progman=0x{progman.ToInt64():X} for fallback behind icons");
+                    }
+                }
+            }
+            catch { }
+            ShowWindow(hwnd, 8); // SW_SHOWNA - show without activate
+            // Push to bottom behind taskbar (Shell_TrayWnd is TOPMOST) and behind icons; keep borderless and no-round.
+            try { SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); } catch { }
+            TryDisableRoundedCorners(hwnd);
+            System.Diagnostics.Debug.WriteLine($"[App] EnsureWallpaperBehindDesktop SW_SHOWNA HWND_BOTTOM borderless hwnd=0x{hwnd.ToInt64():X} behind icons/taskbar");
         }
         catch (Exception ex)
         {

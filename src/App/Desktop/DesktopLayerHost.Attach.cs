@@ -76,7 +76,21 @@ public sealed partial class DesktopLayerHost
             // Avoid 6-sec synchronous EnsureLayer on UI thread. Background healing (EnsureLayerAsync) handles retries.
             // Do a single quick probe without sleep; if still missing, fail fast and let caller/healing retry asynchronously.
             Log("AttachClassic: WorkerW not found — skipping synchronous EnsureLayer (use EnsureLayerAsync on background)");
-            // Fallback visible: keep wallpaper as fullscreen borderless window covering virtual screen even without WorkerW (for testing).
+            // Fallback visible but NOT covering taskbar/icons: HWND_BOTTOM + parent to Progman so taskbar Shell_TrayWnd stays on top.
+            // Remove rounded corners via DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_DONOTROUND.
+            try { TryDisableRoundedCorners(hwnd); } catch { }
+            // Parent to Progman even in fallback so icons (SHELLDLL_DefView child of Progman) stay above wallpaper.
+            try
+            {
+                var progmanFb = _interop.FindWindow("Progman", null);
+                if (progmanFb != IntPtr.Zero)
+                {
+                    _interop.SetParent(hwnd, progmanFb);
+                    LastProgman = progmanFb;
+                    Log($"AttachClassic fallback: SetParent to Progman=0x{progmanFb.ToInt64():X} so fallback stays behind desktop icons");
+                }
+            }
+            catch { }
             // Restore WS_POPUP, remove WS_CHILD, add WS_EX_TOOLWINDOW, remove WS_EX_APPWINDOW, position covering virtual screen with DpiScale + MapWindowPoints, SW_SHOWNA.
             try
             {
@@ -159,16 +173,24 @@ public sealed partial class DesktopLayerHost
                 var fbBounds = _display.VirtualScreenBounds;
                 double fbScale = _display.GetScaleForWindow(hwnd);
                 if (fbScale <= 0) fbScale = 1.0;
+                // Map virtual-screen rect into Progman client coords when parented to Progman, so wallpaper sits behind icons covering entire virtual screen.
+                var progmanForMap = LastProgman != IntPtr.Zero ? LastProgman : _interop.FindWindow("Progman", null);
                 var fbRc = new RECT { Left = fbBounds.Left, Top = fbBounds.Top, Right = fbBounds.Right, Bottom = fbBounds.Bottom };
-                _interop.MapWindowPoints(IntPtr.Zero, IntPtr.Zero, ref fbRc, 2);
+                if (progmanForMap != IntPtr.Zero)
+                    _interop.MapWindowPoints(IntPtr.Zero, progmanForMap, ref fbRc, 2);
+                else
+                    _interop.MapWindowPoints(IntPtr.Zero, IntPtr.Zero, ref fbRc, 2);
                 int fbW = (int)(fbBounds.Width * fbScale);
                 int fbH = (int)(fbBounds.Height * fbScale);
-                bool fbPosOk = _interop.SetWindowPos(hwnd, DesktopNative.HWND_TOP, fbRc.Left, fbRc.Top, fbW, fbH, DesktopNative.SWP_NOACTIVATE);
-                Log($"AttachClassic fallback: SetWindowPos to {fbRc.Left},{fbRc.Top} {fbW}x{fbH} scale {fbScale} => {fbPosOk} (MapWindowPoints rc {fbRc.Left},{fbRc.Top} virtual screen fallback visible)");
+                bool fbPosOk = _interop.SetWindowPos(hwnd, DesktopNative.HWND_BOTTOM, fbRc.Left, fbRc.Top, fbW, fbH, DesktopNative.SWP_NOACTIVATE);
+                Log($"AttachClassic fallback: SetWindowPos HWND_BOTTOM to {fbRc.Left},{fbRc.Top} {fbW}x{fbH} scale {fbScale} => {fbPosOk} (MapWindowPoints rc {fbRc.Left},{fbRc.Top} virtual screen fallback visible behind icons/taskbar)");
             }
             catch (Exception ex) { Log($"AttachClassic fallback SetWindowPos failed: {ex.Message}"); }
             try { _interop.ShowWindow(hwnd, DesktopNative.SW_SHOWNA); } catch { }
-            Log($"AttachClassic: fallback SW_SHOWNA hwnd=0x{hwnd.ToInt64():X} WorkerW not found — fallback visible covering virtual screen");
+            // Re-assert bottom after ShowWindow — ShowWindow can bring to top, so push back to bottom behind taskbar/icons and disable rounding again.
+            try { _interop.SetWindowPos(hwnd, DesktopNative.HWND_BOTTOM, 0, 0, 0, 0, DesktopNative.SWP_NOMOVE | DesktopNative.SWP_NOSIZE | DesktopNative.SWP_NOACTIVATE); } catch { }
+            try { TryDisableRoundedCorners(hwnd); } catch { }
+            Log($"AttachClassic: fallback SW_SHOWNA HWND_BOTTOM hwnd=0x{hwnd.ToInt64():X} WorkerW not found — fallback visible behind icons/taskbar (not covering)");
             _attachedHwnd = hwnd;
             SetupHealing();
             return false;
@@ -272,5 +294,21 @@ public sealed partial class DesktopLayerHost
         if ((ex & DesktopNative.WS_EX_LAYERED) == 0)
             _interop.SetWindowLongPtr(hwnd, DesktopNative.GWL_EXSTYLE, (nint)(ex | DesktopNative.WS_EX_LAYERED));
         _interop.SetLayeredWindowAttributes(hwnd, 0, alpha, DesktopNative.LWA_ALPHA);
+    }
+
+    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    private const int DWMWCP_DONOTROUND = 1;
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+    private static void TryDisableRoundedCorners(IntPtr hwnd)
+    {
+        try
+        {
+            int pref = DWMWCP_DONOTROUND;
+            DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, sizeof(int));
+        }
+        catch { }
     }
 }
