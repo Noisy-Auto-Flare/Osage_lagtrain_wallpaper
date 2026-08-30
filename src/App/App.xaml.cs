@@ -476,7 +476,17 @@ public partial class App : Application
                     ShowSettings();
                     break;
                 case ID_TRAY_ENABLE:
-                    _trayLogic?.ToggleEnable();
+                    // Fire-and-forget async — never block Dispatcher (was 20×300ms=6s hang)
+                    if (_enableManager != null)
+                    {
+                        _ = _enableManager.ToggleAsync();
+                    }
+                    else
+                    {
+                        _trayLogic?.ToggleEnable();
+                    }
+                    System.Diagnostics.Debug.WriteLine($"[App] ToggleEnable dispatched async IsEnabled={_enableManager?.IsEnabled}");
+                    Console.WriteLine($"[App] ToggleEnable dispatched async IsEnabled={_enableManager?.IsEnabled}");
                     break;
                 case ID_TRAY_AUTOSTART:
                     _trayLogic?.ToggleAutostart();

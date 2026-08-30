@@ -406,42 +406,38 @@ public sealed class F3ManualHarness
         bool initiallyEnabled = enable.IsEnabled;
         Log($" Initially IsEnabled={initiallyEnabled} (expected true)");
         ok &= initiallyEnabled;
-        // Disable
-        enable.Disable();
+        // Disable — use async await to ensure no UI hang, but hide/restore is quick (no Task.Delay)
+        enable.DisableAsync().GetAwaiter().GetResult();
         bool afterDisable = !enable.IsEnabled;
         bool hideOk = mockDesktop.HideCalls==1;
         bool restoreOk = mockDesktop.RestoreCalls==1;
         bool pauseOk = mockMonitor.PauseCalls==1;
         Log($" After Disable IsEnabled={enable.IsEnabled} HideCalls={mockDesktop.HideCalls} RestoreCalls={mockDesktop.RestoreCalls} Pause={mockMonitor.PauseCalls} => hideOk={hideOk} restoreOk={restoreOk} pauseOk={pauseOk}");
         ok &= afterDisable && hideOk && restoreOk && pauseOk;
-        // Verify wallpaper restored covers per-monitor IDesktopWallpaper.SetWallpaper simulation (RestoreDesktop called)
-        // Check Hide called before Restore (order) - we can infer via calls both 1
         bool orderOk = hideOk && restoreOk;
         Log($" RestoreDesktop after Hide orderOk={orderOk} (IDesktopWallpaper per monitor, not SPI)");
-        // Also verify wallpaper window idle after disable: ShowIdle simulation
         var ww = new WallpaperWindow();
         ww.ShowIdle();
         bool idleOk = ww.IsIdle && ww.IdleColorHex=="#b2b2b2";
         Log($" WallpaperWindow ShowIdle IsIdle={ww.IsIdle} idleColor {ww.IdleColorHex} ok={idleOk}");
         ok &= idleOk;
-        // Enable again
-        enable.Enable();
+        // Enable again — await async (was 20×300ms=6s hang on UI, now Task.Delay)
+        enable.EnableAsync().GetAwaiter().GetResult();
         bool afterEnable = enable.IsEnabled;
         bool probeOk = mockDesktop.ProbeCalls >=1;
         bool attachOk = mockDesktop.AttachCalls >=1;
         bool resumeOk = mockMonitor.ResumeCalls==1;
         Log($" After Enable IsEnabled={afterEnable} ProbeCalls={mockDesktop.ProbeCalls} Attach={mockDesktop.AttachCalls} Resume={mockMonitor.ResumeCalls} => {probeOk&&attachOk&&resumeOk}");
         ok &= afterEnable && probeOk && attachOk && resumeOk;
-        // Toggle test
-        enable.Toggle();
+        // Toggle test — use async
+        enable.ToggleAsync().GetAwaiter().GetResult();
         bool toggleOff = !enable.IsEnabled;
         Log($" Toggle off => IsEnabled={enable.IsEnabled} ok={toggleOff}");
         ok &= toggleOff;
-        enable.Toggle();
+        enable.ToggleAsync().GetAwaiter().GetResult();
         bool toggleOn = enable.IsEnabled;
         Log($" Toggle on => IsEnabled={enable.IsEnabled} ok={toggleOn}");
         ok &= toggleOn;
-        // Session helpers not failing
         enable.OnSessionLock(); enable.OnSessionUnlock();
         Log($" Session lock/unlock not throw => ok");
         Record("J4 Enable off → wallpaper restored", ok, $"hide={hideOk} restore={restoreOk} pause={pauseOk} probe={probeOk} attach={attachOk} resume={resumeOk} idle #b2b2b2");
@@ -578,7 +574,7 @@ public sealed class F3ManualHarness
             Log($" [Render-test] 12fps interval {interval.TotalMilliseconds:F1}ms jitter PASS DispatcherTimer");
         }catch(Exception ex){ Log($" Render harness {ex.Message}");}
         try{
-            var mockD=new MockDesktopHost(); var mockM=new MockMonitorCtrl(); var en=new EnableManager(mockD,mockM,()=>new IntPtr(0xDEAD)); en.Disable(); en.Enable();
+            var mockD=new MockDesktopHost(); var mockM=new MockMonitorCtrl(); var en=new EnableManager(mockD,mockM,()=>new IntPtr(0xDEAD)); en.DisableAsync().GetAwaiter().GetResult(); en.EnableAsync().GetAwaiter().GetResult();
             Log($" [Toggle-enable] Disable hide {mockD.HideCalls} restore {mockD.RestoreCalls} pause {mockM.PauseCalls} => PASS");
         }catch(Exception ex){ Log($" Tray harness {ex.Message}");}
         try{

@@ -134,7 +134,8 @@ public sealed partial class WindowMonitor : IDisposable
             bool covers = IsCovering(fg);
             string exe = _interop.GetExeName(fg);
             bool isSelf = string.Equals(exe, "OsageLagtrain.exe", StringComparison.OrdinalIgnoreCase);
-            Log($"EvaluateCovering fg=0x{fg.ToInt64():X} class={_interop.GetClassName(fg)} exe={exe} covers={covers} isZoomed={_interop.IsZoomed(fg)} visible={_interop.IsWindowVisible(fg)} isSelf={isSelf}");
+            bool isIconic = _interop.IsIconic(fg);
+            Log($"EvaluateCovering fg=0x{fg.ToInt64():X} class={_interop.GetClassName(fg)} exe={exe} covers={covers} isZoomed={_interop.IsZoomed(fg)} visible={_interop.IsWindowVisible(fg)} isIconic={isIconic} isSelf={isSelf}");
             if (covers)
             {
                 _previousWasCovering = true;
@@ -170,6 +171,15 @@ public sealed partial class WindowMonitor : IDisposable
                     }
                     _previousMonitorId = string.Empty;
                     _previousExeName = string.Empty;
+                }
+                else if (_previousWasCovering && isIconic)
+                {
+                    // Minimized covering window (MINIMIZESTART) — don't clear previousWasCovering.
+                    // User minimized maximized Notepad: foreground may briefly stay on iconic hwnd before desktop.
+                    // Keep flag true so next desktop fg fires WallpaperShouldAdvance.
+                    Log($"keep previousWasCovering after minimize/iconic fg=0x{fg.ToInt64():X} exe={exe} — waiting for desktop IsDesktopFg");
+                    _previousHwnd = fg;
+                    // keep _previousMonitorId/_previousExeName for desktop trigger
                 }
                 else
                 {

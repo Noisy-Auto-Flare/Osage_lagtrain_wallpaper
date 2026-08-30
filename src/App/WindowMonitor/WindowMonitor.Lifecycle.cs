@@ -36,6 +36,21 @@ public sealed partial class WindowMonitor
 
     private void OnWinEvent(IntPtr hHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint tid, uint time)
     {
+        try
+        {
+            string evName = eventType switch
+            {
+                WindowMonitorConstants.EVENT_SYSTEM_FOREGROUND => "FOREGROUND",
+                WindowMonitorConstants.EVENT_SYSTEM_MINIMIZESTART => "MINIMIZESTART",
+                WindowMonitorConstants.EVENT_SYSTEM_MINIMIZEEND => "MINIMIZEEND",
+                WindowMonitorConstants.EVENT_SYSTEM_MOVESIZESTART => "MOVESIZESTART",
+                WindowMonitorConstants.EVENT_SYSTEM_MOVESIZEEND => "MOVESIZEEND",
+                WindowMonitorConstants.EVENT_OBJECT_DESTROY => "OBJECT_DESTROY",
+                _ => $"0x{eventType:X}"
+            };
+            Log($"WinEvent {evName} hwnd=0x{hwnd.ToInt64():X} tid={tid}");
+        }
+        catch { }
         lock (_lock) { _dirty = true; }
         ScheduleEvaluate();
     }

@@ -91,6 +91,11 @@ public sealed class TrayIcon : IDisposable
         // MF_CHECKED updated via IsEnableChecked live read on next BuildMenu
     }
 
+    public Task ToggleEnableAsync()
+    {
+        return _enable.ToggleAsync();
+    }
+
     public void ToggleAutostart()
     {
         bool cur = _autostart.IsEnabled;

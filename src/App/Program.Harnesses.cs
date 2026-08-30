@@ -123,12 +123,12 @@ internal static partial class Program
         var enable = new Shell.EnableManager(mockDesktop, mockMonitor, () => new IntPtr(0xDEAD));
         if (args.Contains("--toggle-enable"))
         {
-            enable.Disable();
+            enable.DisableAsync().GetAwaiter().GetResult();
             bool hideOk = mockDesktop.HideCalls == 1;
             bool restoreOk = mockDesktop.RestoreCalls == 1;
             bool pauseOk = mockMonitor.PauseCalls == 1;
             Console.WriteLine($"Toggle OFF: Hide={hideOk} RestoreDesktop={restoreOk} Pause={pauseOk} {(hideOk && restoreOk && pauseOk ? "PASS" : "FAIL")}");
-            enable.Enable();
+            enable.EnableAsync().GetAwaiter().GetResult();
             bool probeOk = mockDesktop.ProbeCalls >= 1;
             bool attachOk = mockDesktop.AttachCalls >= 1;
             bool resumeOk = mockMonitor.ResumeCalls == 1;

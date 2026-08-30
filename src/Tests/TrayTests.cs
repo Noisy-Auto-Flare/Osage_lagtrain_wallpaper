@@ -118,15 +118,15 @@ public class TrayTests
     }
 
     [Fact]
-    public void Enable_HideRestore_Pause_And_ReProbe_OnEnable()
+    public async Task Enable_HideRestore_Pause_And_ReProbe_OnEnable()
     {
         var desktop = new MockDesktop();
         var monitor = new MockMonitor();
         var enable = new EnableManager(desktop, monitor, () => new IntPtr(0xBEEF));
 
         Assert.True(enable.IsEnabled);
-        // Disable
-        enable.Disable();
+        // Disable — async but hide/restore completes synchronously (no delay)
+        await enable.DisableAsync();
         Assert.False(enable.IsEnabled);
         Assert.Equal(1, monitor.PauseCalls);
         Assert.Equal(1, desktop.HideCalls);
@@ -134,8 +134,8 @@ public class TrayTests
         Assert.True(enable.LastHideCalled);
         Assert.True(enable.LastRestoreCalled);
 
-        // Enable back should Probe+Attach+Resume with retry
-        enable.Enable();
+        // Enable back should Probe+Attach+Resume with retry — await async to avoid 6s UI hang
+        await enable.EnableAsync();
         Assert.True(enable.IsEnabled);
         Assert.True(desktop.ProbeCalls >= 1);
         Assert.True(desktop.AttachCalls >= 1);

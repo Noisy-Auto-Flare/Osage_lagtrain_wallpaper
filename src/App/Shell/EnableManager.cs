@@ -78,13 +78,13 @@ public sealed class EnableManager
         : this(new DesktopHostAdapter(desktopHost), new MonitorAdapter(monitor), hwndProvider)
     { }
 
-    public void SetEnabled(bool enabled)
+    public async Task SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
     {
         if (_isEnabled == enabled) return;
         _isEnabled = enabled;
         if (!enabled)
         {
-            // Enable==false → Pause + Hide + RestoreDesktop to snapshot
+            // Enable==false → Pause + Hide + RestoreDesktop to snapshot (no loop, quick)
             try { _monitor.Pause(); } catch { }
             try
             {
@@ -101,18 +101,17 @@ public sealed class EnableManager
         }
         else
         {
-            // Enable==true → Probe()+Attach()+Resume with retry Probe
+            // Enable==true → Probe()+Attach()+Resume with retry Probe — async, non-blocking
             LastRestoreCalled = false;
             LastHideCalled = false;
             int attempts = 0;
             try
             {
-                // Retry Probe up to 20*300ms pattern is inside host EnsureLayer, but we do probe retry here for enable
                 for (int i = 0; i < DesktopLayerHost.RetryCount; i++)
                 {
+                    if (cancellationToken.IsCancellationRequested) break;
                     attempts = i + 1;
                     var topo = _desktop.Probe();
-                    // Try ensure layer then attach
                     try { _desktop.EnsureLayer(); } catch { }
                     var hwnd = _hwndProvider();
                     if (hwnd != IntPtr.Zero)
@@ -122,27 +121,50 @@ public sealed class EnableManager
                     }
                     else
                     {
-                        // No hwnd yet, just probe success enough to resume monitor
                         break;
                     }
-                    // sleep between retries via interop sleep? Use Thread.Sleep directly for test verifiability
-                    Thread.Sleep(DesktopLayerHost.RetryDelayMs);
+                    if (i < DesktopLayerHost.RetryCount - 1)
+                    {
+                        try { await Task.Delay(DesktopLayerHost.RetryDelayMs, cancellationToken).ConfigureAwait(false); } catch (TaskCanceledException) { break; }
+                    }
                 }
             }
             catch { }
             LastProbeAttempts = attempts;
-            try
-            {
-                _desktop.Show();
-            }
-            catch { }
+            try { _desktop.Show(); } catch { }
             try { _monitor.Resume(); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Sync wrapper for backward compat — fires async work without blocking UI thread.
+    /// Disable path completes synchronously (no delay) so tests see Hide/Restore immediately.
+    /// Enable path runs async via Task.Run fire-and-forget to avoid 6s UI hang.
+    /// Tray menu should call SetEnabledAsync directly.
+    /// </summary>
+    public void SetEnabled(bool enabled)
+    {
+        if (_isEnabled == enabled) return;
+        if (!enabled)
+        {
+            // Disable is quick with no delay — execute synchronously on caller thread (no Task.Delay)
+            // Use SetEnabledAsync but allow it to complete synchronously; fire-and-forget still sets state immediately
+            _ = SetEnabledAsync(enabled);
+        }
+        else
+        {
+            // Enable has retry loop — offload to avoid blocking Dispatcher 6s
+            _ = Task.Run(() => SetEnabledAsync(enabled));
         }
     }
 
     public void Enable() => SetEnabled(true);
     public void Disable() => SetEnabled(false);
     public void Toggle() => SetEnabled(!_isEnabled);
+
+    public Task EnableAsync() => SetEnabledAsync(true);
+    public Task DisableAsync() => SetEnabledAsync(false);
+    public Task ToggleAsync() => SetEnabledAsync(!_isEnabled);
 
     // Session lock/display-off helpers
     public void OnSessionLock() => _monitor.PauseForSession();
