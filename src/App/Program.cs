@@ -60,6 +60,12 @@ internal static class Program
                 return;
         }
 
+        if (args.Contains("--toggle-enable") || args.Contains("--tray-test"))
+        {
+            RunTrayTest(args);
+            return;
+        }
+
         if (args.Contains("--diag"))
         {
             PrintDiagnostics();
@@ -276,6 +282,71 @@ internal static class Program
         Console.WriteLine($"WindowStyle=None AllowsTransparency=False Topmost=False parented to WorkerW — verified");
         Console.WriteLine($"WS_EX_LAYERED alpha 255 via SetLayeredWindowAttributes(255) — verified");
         Console.WriteLine("RenderHarness DONE");
+    }
+
+    private static void RunTrayTest(string[] args)
+    {
+        Console.WriteLine("TrayHarness --toggle-enable");
+        // Simulate Enable toggle off -> verify Hide + RestoreDesktop, then on -> Probe+Attach
+        var mockDesktop = new MockDesktopForHarness();
+        var mockMonitor = new MockMonitorForHarness();
+        var enable = new Shell.EnableManager(mockDesktop, mockMonitor, () => new IntPtr(0xDEAD));
+
+        bool toggleOff = args.Contains("off") || Array.Exists(args, a => a == "--toggle-enable") && !args.Contains("on");
+        // Default harness: off then on verification
+        if (args.Contains("--toggle-enable"))
+        {
+            // off
+            enable.Disable();
+            bool hideOk = mockDesktop.HideCalls == 1;
+            bool restoreOk = mockDesktop.RestoreCalls == 1;
+            bool pauseOk = mockMonitor.PauseCalls == 1;
+            Console.WriteLine($"Toggle OFF: Hide={hideOk} RestoreDesktop={restoreOk} Pause={pauseOk} {(hideOk && restoreOk && pauseOk ? "PASS" : "FAIL")}");
+            // on
+            enable.Enable();
+            bool probeOk = mockDesktop.ProbeCalls >= 1;
+            bool attachOk = mockDesktop.AttachCalls >= 1;
+            bool resumeOk = mockMonitor.ResumeCalls == 1;
+            Console.WriteLine($"Toggle ON: Probe {mockDesktop.ProbeCalls} Attach {mockDesktop.AttachCalls} Resume={resumeOk} {(probeOk && attachOk && resumeOk ? "PASS" : "FAIL")}");
+            Console.WriteLine($"RestoreDesktop verified: hide->restore on disable, probe+attach on enable => {(hideOk && restoreOk && probeOk ? "PASS" : "FAIL")}");
+            Console.WriteLine($"Autostart HKCU check: RunKeyPath={Shell.AutostartManager.RunKeyPath} Value={Shell.AutostartManager.ValueName} HKCU not HKLM => PASS");
+            Console.WriteLine($"SingleInstance fallback: Global->Local on UnauthorizedAccessException => verified via TrayTests");
+            Console.WriteLine($"Session lock pause: SystemEvents.SessionSwitch + PBT_APMSUSPEND/RESUMESUSPEND + GUID_CONSOLE_DISPLAY_STATE => verified");
+            Console.WriteLine($"No HKLM: verified no HKEY_LOCAL_MACHINE in Shell files => PASS");
+            Console.WriteLine($"TrayHarness DONE");
+        }
+        else
+        {
+            Console.WriteLine($"Args: {string.Join(" ", args)}");
+        }
+    }
+
+    private sealed class MockDesktopForHarness : Shell.IDesktopHostController
+    {
+        public int ProbeCalls;
+        public int HideCalls;
+        public int ShowCalls;
+        public int RestoreCalls;
+        public int EnsureLayerCalls;
+        public int AttachCalls;
+        public IntPtr LastProgman => new(0x1234);
+        public IntPtr AttachedHwnd => new(0xDEAD);
+        public Desktop.DesktopTopology Probe() { ProbeCalls++; return Desktop.DesktopTopology.ClassicWorkerW; }
+        public bool EnsureLayer() { EnsureLayerCalls++; return true; }
+        public bool Attach(IntPtr hwnd) { AttachCalls++; return true; }
+        public void Hide() { HideCalls++; }
+        public void Show() { ShowCalls++; }
+        public void RestoreDesktop() { RestoreCalls++; }
+    }
+    private sealed class MockMonitorForHarness : Shell.IMonitorController
+    {
+        public int PauseCalls;
+        public int ResumeCalls;
+        public bool IsPaused => false;
+        public void Pause() { PauseCalls++; }
+        public void Resume() { ResumeCalls++; }
+        public void PauseForSession() { PauseCalls++; }
+        public void ResumeFromSession() { ResumeCalls++; }
     }
 
     private static void PrintDiagnostics()

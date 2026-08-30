@@ -47,6 +47,8 @@ public interface IDesktopInterop
     int GetSystemMetrics(int nIndex);
     void Sleep(int millisecondsTimeout);
     IntPtr GetShellDefView();
+    // Default impl for backward compat with existing test mocks
+    bool ShowWindow(IntPtr hWnd, int nCmdShow) => true;
     // DPI helper
     uint GetDpiForSystem();
     IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);

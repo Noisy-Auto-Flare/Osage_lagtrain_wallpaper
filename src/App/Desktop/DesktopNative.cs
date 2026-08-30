@@ -47,6 +47,10 @@ internal static class DesktopNative
 
     public const int PRIMARY_DPI = 96;
 
+    public const int SW_HIDE = 0;
+    public const int SW_SHOW = 5;
+    public const int SW_RESTORE = 9;
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr FindWindowW(string? lpClassName, string? lpWindowName);
 
@@ -100,6 +104,9 @@ internal static class DesktopNative
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern bool SystemParametersInfoW(uint uiAction, uint uiParam, string? pvParam, uint fWinIni);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern int GetSystemMetrics(int nIndex);

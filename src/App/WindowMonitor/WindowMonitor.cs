@@ -25,11 +25,16 @@ public sealed class WindowMonitor : IDisposable
     private string _previousExeName = string.Empty;
     private IntPtr _previousHwnd = IntPtr.Zero;
     private bool _pausedByD3D;
+    private bool _pausedExplicitly;
+    private bool _pausedBySession;
 
     // For test inspection
     public IReadOnlyList<IntPtr> HookHandles => _hookHandles;
     public int ShQueryCalls => _shQueryCalls;
     public bool IsPausedByD3D => _pausedByD3D;
+    public bool IsPausedExplicitly => _pausedExplicitly;
+    public bool IsPausedBySession => _pausedBySession;
+    public bool IsPaused => _pausedExplicitly || _pausedBySession || _pausedByD3D;
 
     public event Action<string, string>? WallpaperShouldAdvance;
 
@@ -131,10 +136,61 @@ public sealed class WindowMonitor : IDisposable
     // Exposed for tests to trigger without timer
     public void TriggerEvaluate() => EvaluateCovering();
 
+    public void Pause()
+    {
+        if (_disposed) return;
+        _pausedExplicitly = true;
+        lock (_lock)
+        {
+            _fallbackTimer?.Dispose();
+            _fallbackTimer = null;
+            _debounceTimer?.Dispose();
+            _debounceTimer = null;
+        }
+        foreach (var h in _hookHandles)
+        {
+            try { _interop.UnhookWinEvent(h); } catch { }
+        }
+        _hookHandles.Clear();
+        if (_hookGCHandle.IsAllocated) _hookGCHandle.Free();
+        _hookDelegate = null;
+    }
+
+    public void Resume()
+    {
+        if (_disposed) return;
+        if (!_pausedExplicitly && !_pausedBySession) return;
+        _pausedExplicitly = false;
+        if (_pausedBySession) return; // still paused by session
+        SubscribeHooks();
+        _fallbackTimer = new System.Threading.Timer(_ => OnPollTick(), null, WindowMonitorConstants.FallbackPollMs, WindowMonitorConstants.FallbackPollMs);
+        EvaluateCovering();
+    }
+
+    public void PauseForSession()
+    {
+        _pausedBySession = true;
+        Pause();
+    }
+
+    public void ResumeFromSession()
+    {
+        _pausedBySession = false;
+        if (_pausedExplicitly) return;
+        // re-create hooks
+        if (_disposed) return;
+        if (_hookHandles.Count == 0)
+        {
+            SubscribeHooks();
+            _fallbackTimer = new System.Threading.Timer(_ => OnPollTick(), null, WindowMonitorConstants.FallbackPollMs, WindowMonitorConstants.FallbackPollMs);
+        }
+    }
+
     // Core evaluation
     public void EvaluateCovering()
     {
         if (_disposed) return;
+        if (_pausedExplicitly || _pausedBySession) return;
         lock (_lock) { _dirty = false; }
 
         // SHQuery caching 500ms

@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
     <PackageReference Include="xunit" Version="2.7.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.7">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -41,5 +42,9 @@
     <Compile Include="..\App\Ui\SceneListItem.cs" Link="Ui\SceneListItem.cs" />
     <Compile Include="..\App\Ui\SettingsStore.cs" Link="Ui\SettingsStore.cs" />
     <Compile Include="..\App\Ui\SettingsViewModel.cs" Link="Ui\SettingsViewModel.cs" />
+    <Compile Include="..\App\Shell\AutostartManager.cs" Link="Shell\AutostartManager.cs" />
+    <Compile Include="..\App\Shell\SingleInstanceManager.cs" Link="Shell\SingleInstanceManager.cs" />
+    <Compile Include="..\App\Shell\EnableManager.cs" Link="Shell\EnableManager.cs" />
+    <Compile Include="..\App\Shell\TrayIcon.cs" Link="Shell\TrayIcon.cs" />
   </ItemGroup>
 </Project>

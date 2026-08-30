@@ -432,8 +432,54 @@ public sealed class DesktopLayerHost : IDisposable
     public IntPtr WinEventHookHandle => _winEventHook;
 
     /// <summary>
-    /// Only place where SPI_SETDESKWALLPAPER / IDesktopWallpaper is called, on Dispose/final exit.
-    /// Must NOT be called while alive.
+    /// Hide WorkerW / attached window via ShowWindow SW_HIDE. Does NOT call SPI.
+    /// Used by EnableManager when Enable==false.
+    /// </summary>
+    public void Hide()
+    {
+        try
+        {
+            if (_attachedHwnd != IntPtr.Zero)
+            {
+                _interop.ShowWindow(_attachedHwnd, DesktopNative.SW_HIDE);
+                Log($"Hide: ShowWindow SW_HIDE hwnd=0x{_attachedHwnd.ToInt64():X}");
+            }
+            else
+            {
+                // Fallback: hide any found WorkerW for test verifiability
+                var workerW = FindWorkerW();
+                if (workerW != IntPtr.Zero)
+                {
+                    _interop.ShowWindow(workerW, DesktopNative.SW_HIDE);
+                    Log($"Hide: ShowWindow SW_HIDE WorkerW=0x{workerW.ToInt64():X}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Hide failed: {ex.Message}");
+        }
+    }
+
+    public void Show()
+    {
+        try
+        {
+            if (_attachedHwnd != IntPtr.Zero)
+            {
+                _interop.ShowWindow(_attachedHwnd, DesktopNative.SW_SHOW);
+                Log($"Show: ShowWindow SW_SHOW hwnd=0x{_attachedHwnd.ToInt64():X}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Show failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Only place where SPI_SETDESKWALLPAPER / IDesktopWallpaper is called, on Dispose/final exit or Enable disable.
+    /// Must NOT be called while alive except via Hide/disable path.
     /// </summary>
     public void RestoreDesktop()
     {

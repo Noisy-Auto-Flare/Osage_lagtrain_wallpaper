@@ -56,4 +56,6 @@ public sealed class NativeDesktopInterop : IDesktopInterop
     public uint GetDpiForSystem() => DesktopNative.GetDpiForSystem();
 
     public IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags) => DesktopNative.MonitorFromWindow(hwnd, dwFlags);
+
+    public bool ShowWindow(IntPtr hWnd, int nCmdShow) => DesktopNative.ShowWindow(hWnd, nCmdShow);
 }
