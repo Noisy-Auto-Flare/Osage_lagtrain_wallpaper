@@ -33,17 +33,24 @@ public sealed partial class DesktopLayerHost
         if (eventType == DesktopNative.EVENT_OBJECT_DESTROY)
         {
             Log($"Healing: EVENT_OBJECT_DESTROY hwnd=0x{hwnd.ToInt64():X}");
-            HandleHealingTrigger("EVENT_OBJECT_DESTROY");
+            _ = HandleHealingTriggerAsync("EVENT_OBJECT_DESTROY");
         }
     }
 
     public void HandleHealingTrigger(string reason)
     {
-        Log($"Healing trigger: {reason} -> re-probe");
+        // Fire-and-forget async to avoid blocking caller (UI or WinEvent thread)
+        _ = HandleHealingTriggerAsync(reason);
+    }
+
+    public async Task HandleHealingTriggerAsync(string reason, CancellationToken cancellationToken = default)
+    {
+        Log($"Healing trigger: {reason} -> re-probe (async)");
         for (int i = 0; i < RetryCount; i++)
         {
+            if (cancellationToken.IsCancellationRequested) break;
             var t = Probe();
-            bool layerOk = EnsureLayer();
+            bool layerOk = await EnsureLayerAsync(cancellationToken).ConfigureAwait(false);
             if (layerOk)
             {
                 Log($"Healing: re-probe success on attempt {i + 1} topology={t}");
@@ -56,14 +63,14 @@ public sealed partial class DesktopLayerHost
                 }
                 break;
             }
-            _interop.Sleep(RetryDelayMs);
+            try { await Task.Delay(RetryDelayMs, cancellationToken).ConfigureAwait(false); } catch (TaskCanceledException) { break; }
         }
     }
 
-    public void OnTaskbarCreated() => HandleHealingTrigger("WM_TASKBARCREATED");
-    public void OnDisplayChanged() => HandleHealingTrigger("WM_DISPLAYCHANGE");
-    public void OnDpiChanged() => HandleHealingTrigger("WM_DPICHANGED");
-    public void OnSessionUnlock() => HandleHealingTrigger("WTS_SESSION_UNLOCK");
+    public void OnTaskbarCreated() => _ = HandleHealingTriggerAsync("WM_TASKBARCREATED");
+    public void OnDisplayChanged() => _ = HandleHealingTriggerAsync("WM_DISPLAYCHANGE");
+    public void OnDpiChanged() => _ = HandleHealingTriggerAsync("WM_DPICHANGED");
+    public void OnSessionUnlock() => _ = HandleHealingTriggerAsync("WTS_SESSION_UNLOCK");
 
     public uint TaskbarCreatedMessage => _taskbarCreatedMsg;
     public IntPtr WinEventHookHandle => _winEventHook;

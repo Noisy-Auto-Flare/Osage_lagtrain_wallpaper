@@ -72,15 +72,10 @@ public sealed partial class DesktopLayerHost
         LastWorkerW = workerW;
         if (workerW == IntPtr.Zero)
         {
-            Log("AttachClassic: WorkerW not found, calling EnsureLayer retry");
-            EnsureLayer();
-            workerW = FindWorkerW();
-            LastWorkerW = workerW;
-            if (workerW == IntPtr.Zero)
-            {
-                Log("AttachClassic: WorkerW still not found after EnsureLayer");
-                return false;
-            }
+            // Avoid 6-sec synchronous EnsureLayer on UI thread. Background healing (EnsureLayerAsync) handles retries.
+            // Do a single quick probe without sleep; if still missing, fail fast and let caller/healing retry asynchronously.
+            Log("AttachClassic: WorkerW not found — skipping synchronous EnsureLayer (use EnsureLayerAsync on background)");
+            return false;
         }
         bool parentOk = _interop.SetParent(hwnd, workerW);
         Log($"AttachClassic: SetParent(hwnd=0x{hwnd.ToInt64():X}, WorkerW=0x{workerW.ToInt64():X}) => {parentOk}");

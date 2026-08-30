@@ -87,6 +87,36 @@ public sealed partial class DesktopLayerHost : IDisposable
         return false;
     }
 
+    public async Task<bool> EnsureLayerAsync(CancellationToken cancellationToken = default)
+    {
+        for (int attempt = 0; attempt < RetryCount; attempt++)
+        {
+            if (cancellationToken.IsCancellationRequested) return false;
+            var progman = _interop.FindWindow("Progman", null);
+            LastProgman = progman;
+            if (progman == IntPtr.Zero)
+            {
+                Log($"EnsureLayerAsync attempt {attempt + 1}/{RetryCount}: Progman not found, retry");
+                try { await Task.Delay(RetryDelayMs, cancellationToken).ConfigureAwait(false); } catch (TaskCanceledException) { return false; }
+                continue;
+            }
+            var res = _interop.SendMessageTimeout(progman, DesktopNative.MSG_CREATE_WORKERW, DesktopNative.WPARAM_CREATE_WORKERW, DesktopNative.LPARAM_CREATE_WORKERW, DesktopNative.SMTO_NORMAL, SendMessageTimeoutMs, out IntPtr result);
+            Log($"EnsureLayerAsync attempt {attempt + 1}/{RetryCount}: SendMessageTimeout 0x052C res=0x{res.ToInt64():X} result=0x{result.ToInt64():X}");
+            bool layerReady = IsLayerReady();
+            if (layerReady)
+            {
+                Log($"EnsureLayerAsync: layer ready after {attempt + 1} attempts");
+                return true;
+            }
+            if (attempt < RetryCount - 1)
+            {
+                try { await Task.Delay(RetryDelayMs, cancellationToken).ConfigureAwait(false); } catch (TaskCanceledException) { return false; }
+            }
+        }
+        Log($"EnsureLayerAsync: exhausted {RetryCount} retries, layer may still be pending");
+        return false;
+    }
+
     private bool IsLayerReady()
     {
         if (_topology == DesktopTopology.RaisedDesktop)

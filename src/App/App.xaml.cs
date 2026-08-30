@@ -76,7 +76,7 @@ public partial class App : Application
         InitializeComponent();
     }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         _singleInstance = new SingleInstanceManager();
         bool isFirst;
@@ -104,28 +104,18 @@ public partial class App : Application
         _wallpaperHostWindow.Activate();
         _hwnd = WindowNative.GetWindowHandle(_wallpaperHostWindow);
 
-        try
-        {
-            _desktopHost.Probe();
-            _desktopHost.EnsureLayer();
-            _desktopHost.Attach(_hwnd);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[App] DesktopLayerHost attach failed: {ex.Message}");
-        }
-
+        // Show idle #b2b2b2 immediately on UI thread — do not wait for desktop probe
         try
         {
             _wallpaperWindow = new Rendering.WallpaperWindow(layerHost: _desktopHost, idleColorHex: settings.IdleColor);
-            _wallpaperWindow.AttachToDesktop(_hwnd);
             _wallpaperWindow.ShowIdle();
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[App] WallpaperWindow attach failed: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[App] WallpaperWindow creation failed: {ex.Message}");
         }
 
+        // Create tray and monitor early so they appear before long EnsureLayer
         _enableManager = new EnableManager(_desktopHost, _windowMonitor, () => _hwnd);
         _autostart = new AutostartManager();
         _trayLogic = new TrayIcon(_autostart, _enableManager, _singleInstance,
@@ -138,8 +128,62 @@ public partial class App : Application
 
         _wallpaperHostWindow.Closed += (_, _) => Cleanup();
 
-        System.Diagnostics.Debug.WriteLine("[App] OnLaunched complete — tray visible, wallpaper attached, monitor started");
-        Console.WriteLine("[App] OnLaunched complete — tray visible, wallpaper attached, monitor started");
+        System.Diagnostics.Debug.WriteLine("[App] OnLaunched initial UI ready — tray visible, idle #b2b2b2 shown, desktop attach pending (async)");
+        Console.WriteLine("[App] OnLaunched initial UI ready — tray visible, idle #b2b2b2 shown, desktop attach pending (async)");
+
+        // Offload Probe/EnsureLayer/Attach to background — never block dispatcher (20x300ms = 6s)
+        var hwndCopy = _hwnd;
+        var desktopHostCopy = _desktopHost;
+        var wallpaperWindowCopy = _wallpaperWindow;
+        var dispatcher = _wallpaperHostWindow.DispatcherQueue;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                desktopHostCopy.Probe();
+                bool layerOk = await desktopHostCopy.EnsureLayerAsync().ConfigureAwait(false);
+                if (!layerOk)
+                    System.Diagnostics.Debug.WriteLine("[App] EnsureLayerAsync exhausted 20 retries (6s) — layer pending, healing will retry");
+
+                // Marshal Attach + WallpaperWindow attach back to UI thread (DComp requires UI thread)
+                if (dispatcher != null)
+                {
+                    dispatcher.TryEnqueue(() =>
+                    {
+                        try
+                        {
+                            desktopHostCopy.Attach(hwndCopy);
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[App] background Attach failed: {ex.Message}");
+                        }
+                        try
+                        {
+                            wallpaperWindowCopy?.AttachToDesktop(hwndCopy);
+                            wallpaperWindowCopy?.ShowIdle();
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[App] background WallpaperWindow AttachToDesktop failed: {ex.Message}");
+                        }
+                    });
+                }
+                else
+                {
+                    try { desktopHostCopy.Attach(hwndCopy); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[App] background Attach (no dispatcher) failed: {ex.Message}"); }
+                    try { wallpaperWindowCopy?.AttachToDesktop(hwndCopy); wallpaperWindowCopy?.ShowIdle(); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[App] background desktop setup failed: {ex.Message}");
+            }
+        });
+
+        System.Diagnostics.Debug.WriteLine("[App] OnLaunched complete — tray visible, wallpaper pending attach, monitor started");
+        Console.WriteLine("[App] OnLaunched complete — tray visible, wallpaper pending attach, monitor started");
+        await Task.CompletedTask;
     }
 
     private void CreateTrayIcon()
