@@ -14,6 +14,7 @@ public sealed partial class SettingsWindow : Window
     private readonly SettingsViewModel _vm;
     private readonly DispatcherTimer _previewTimer;
     private bool _isSliderDragging;
+    private bool _isInitializing = true;
 
     public SettingsWindow() : this(CreateDefaultViewModel()) { }
 
@@ -41,6 +42,17 @@ public sealed partial class SettingsWindow : Window
             // Continue so Activate still shows something
         }
         _vm = vm;
+        // Set NumberBox values in code-behind after InitializeComponent to avoid XAML parse failure (Value assignment via XAML can throw XamlParseException with Minimum validation)
+        try
+        {
+            if (FpsBox != null) FpsBox.Value = 12;
+            if (HoldLastBox != null) HoldLastBox.Value = 0;
+            // SceneDelayBox left as NaN to show PlaceholderText="global" (per-scene override); do not set Value here
+            if (GlobalDelayBox != null) GlobalDelayBox.Value = 500;
+            if (NoRepeatBox != null) NoRepeatBox.Value = 3;
+        }
+        catch (Exception ex) { Console.WriteLine($"[SettingsWindow] NumberBox init failed: {ex.Message}"); }
+        _isInitializing = false;
         _previewTimer = new DispatcherTimer();
         _previewTimer.Tick += OnPreviewTick;
         this.Activated += OnActivated;
@@ -75,6 +87,7 @@ public sealed partial class SettingsWindow : Window
     private async Task OnLoadedAsync()
     {
         Console.WriteLine("[SettingsWindow] OnLoadedAsync start");
+        _isInitializing = true;
         try
         {
             if (CyclesRootTextBox != null) CyclesRootTextBox.Text = _vm.GlobalSettings.CyclesRoot;
@@ -99,6 +112,7 @@ public sealed partial class SettingsWindow : Window
             Console.WriteLine("[SettingsWindow] OnLoadedAsync initial fields set");
         }
         catch (Exception ex) { Console.WriteLine($"[SettingsWindow] OnLoadedAsync init failed: {ex}"); }
+        finally { _isInitializing = false; }
 
         try { _vm.PropertyChanged += OnVmPropertyChanged; } catch { }
         try
@@ -139,6 +153,7 @@ public sealed partial class SettingsWindow : Window
 
     private void OnSceneSelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
     {
+        _isInitializing = true;
         try
         {
             if (SceneListView?.SelectedItem is SceneListItem item)
@@ -153,6 +168,7 @@ public sealed partial class SettingsWindow : Window
             }
         }
         catch (Exception ex) { Console.WriteLine($"[SettingsWindow] OnSceneSelectionChanged failed: {ex.Message}"); }
+        finally { _isInitializing = false; }
     }
 
     private void UpdatePreviewImage()
@@ -215,6 +231,7 @@ public sealed partial class SettingsWindow : Window
 
     private void OnFpsChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args)
     {
+        if (_isInitializing) return;
         if (double.IsNaN(args.NewValue)) return;
         int fps = (int)args.NewValue;
         fps = Math.Clamp(fps, 1, 30);
@@ -225,18 +242,21 @@ public sealed partial class SettingsWindow : Window
 
     private void OnHoldLastChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args)
     {
+        if (_isInitializing) return;
         if (double.IsNaN(args.NewValue)) return;
         _vm.SelectedHoldLastMs = (int)args.NewValue;
     }
 
     private void OnSceneDelayChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args)
     {
+        if (_isInitializing) return;
         int? v = double.IsNaN(args.NewValue) ? null : (int?)((int)args.NewValue);
         _vm.SelectedPostEventDelayMs = v;
     }
 
     private void OnGlobalDelayChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args)
     {
+        if (_isInitializing) return;
         if (double.IsNaN(args.NewValue)) return;
         _vm.PostEventDelayMs = (int)args.NewValue;
     }
@@ -249,6 +269,7 @@ public sealed partial class SettingsWindow : Window
 
     private void OnNoRepeatChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args)
     {
+        if (_isInitializing) return;
         if (double.IsNaN(args.NewValue)) return;
         _vm.NoRepeatWindow = (int)args.NewValue;
     }

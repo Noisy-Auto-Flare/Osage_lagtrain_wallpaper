@@ -93,11 +93,11 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                         <TextBlock Text="Fps" Foreground="#e8e8e8" FontSize="11" Margin="0,0,0,4"/>
-                        <NumberBox x:Name="FpsBox" Minimum="1" Maximum="30" Value="12" SpinButtonPlacementMode="Inline" ValueChanged="OnFpsChanged"/>
+                        <NumberBox x:Name="FpsBox" Minimum="1" Maximum="30" SpinButtonPlacementMode="Inline" ValueChanged="OnFpsChanged"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Margin="8,0">
                         <TextBlock Text="HoldLast (ms)" Foreground="#e8e8e8" FontSize="11" Margin="0,0,0,4"/>
-                        <NumberBox x:Name="HoldLastBox" Minimum="0" Maximum="5000" Value="0" SpinButtonPlacementMode="Inline" ValueChanged="OnHoldLastChanged"/>
+                        <NumberBox x:Name="HoldLastBox" Minimum="0" Maximum="5000" SpinButtonPlacementMode="Inline" ValueChanged="OnHoldLastChanged"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="PostEventDelay (ms)" Foreground="#e8e8e8" FontSize="11" Margin="0,0,0,4"/>
@@ -113,7 +113,7 @@
             <StackPanel Margin="16">
                 <TextBlock Text="Global" Foreground="#e8e8e8" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
                 <TextBlock Text="postEventDelayMs" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4"/>
-                <NumberBox x:Name="GlobalDelayBox" Minimum="0" Maximum="5000" Value="500" SpinButtonPlacementMode="Inline" ValueChanged="OnGlobalDelayChanged" Margin="0,0,0,12"/>
+                <NumberBox x:Name="GlobalDelayBox" Minimum="0" Maximum="5000" SpinButtonPlacementMode="Inline" ValueChanged="OnGlobalDelayChanged" Margin="0,0,0,12"/>
                 <TextBlock Text="selectionPolicy" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4"/>
                 <ComboBox x:Name="SelectionPolicyCombo" HorizontalAlignment="Stretch" SelectionChanged="OnSelectionPolicyChanged" Margin="0,0,0,12">
                     <ComboBoxItem Content="randomNoRepeat" Tag="randomNoRepeat"/>
@@ -122,7 +122,7 @@
                     <ComboBoxItem Content="sequentialByMtime" Tag="sequentialByMtime"/>
                 </ComboBox>
                 <TextBlock Text="noRepeatWindow" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4"/>
-                <NumberBox x:Name="NoRepeatBox" Minimum="0" Maximum="20" Value="3" SpinButtonPlacementMode="Inline" ValueChanged="OnNoRepeatChanged" Margin="0,0,0,12"/>
+                <NumberBox x:Name="NoRepeatBox" Minimum="0" Maximum="20" SpinButtonPlacementMode="Inline" ValueChanged="OnNoRepeatChanged" Margin="0,0,0,12"/>
                 <TextBlock Text="idleColor" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4"/>
                 <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
