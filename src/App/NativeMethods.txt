@@ -1,0 +1,6 @@
+SetProcessDpiAwarenessContext
+GetDpiForWindow
+GetWindowDpiAwarenessContext
+AreDpiAwarenessContextsEqual
+GetDpiForMonitor
+GetProcessDpiAwareness

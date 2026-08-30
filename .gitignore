@@ -1,0 +1,40 @@
+# Build outputs
+bin/
+obj/
+publish/
+out/
+
+# VS
+.vs/
+*.user
+*.suo
+
+# Logs
+*.log
+.writetest
+
+# Evidence (not committed)
+.omo/evidence/
+
+# Cycles — ignore all except _template
+cycles/*
+!cycles/_template/
+!cycles/_template/**
+!cycles/.gitkeep
+!cycles/README.md
+cycles/**/*.png
+cycles/**/*.jpg
+cycles/**/*.jpeg
+cycles/**/*.webp
+cycles/**/*.mp4
+
+# OMO transient
+.omo/run-continuation/
+
+# Codegraph
+.codegraph/
+
+.omo/run-continuation/
+
+.omo/
+

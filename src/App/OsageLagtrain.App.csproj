@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SelfContained>false</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowWinRT>true</AllowWinRT>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;x86;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
+    <CsWin32Include>SetProcessDpiAwarenessContext,GetDpiForWindow,GetWindowDpiAwarenessContext,AreDpiAwarenessContextsEqual</CsWin32Include>
+    <AssemblyName>OsageLagtrain</AssemblyName>
+    <RootNamespace>OsageLagtrain.App</RootNamespace>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.5.250108004" />
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.106" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\SplashScreen.scale-200.png" Condition="Exists('Assets\SplashScreen.scale-200.png')" />
+    <Content Include="Assets\LockScreenLogo.scale-200.png" Condition="Exists('Assets\LockScreenLogo.scale-200.png')" />
+    <Content Include="Assets\StoreLogo.png" Condition="Exists('Assets\StoreLogo.png')" />
+    <Content Include="Assets\WideTile.scale-200.png" Condition="Exists('Assets\WideTile.scale-200.png')" />
+    <Content Include="Assets\SmallTile.scale-200.png" Condition="Exists('Assets\SmallTile.scale-200.png')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+</Project>
