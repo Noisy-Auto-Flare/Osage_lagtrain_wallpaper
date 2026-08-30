@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using OsageLagtrain.App.Shell;
 
 namespace OsageLagtrain.App.Desktop;
 
@@ -6,6 +7,7 @@ public sealed class DesktopLayerHost : IDisposable
 {
     private readonly IDesktopInterop _interop;
     private readonly DisplayManager _display;
+    private readonly OriginalWallpaperSnapshot _snapshot;
     private DesktopTopology _topology = DesktopTopology.ClassicWorkerW;
     private bool _probed;
     private bool _disposed;
@@ -28,11 +30,15 @@ public sealed class DesktopLayerHost : IDisposable
     public IntPtr LastWorkerW { get; private set; }
     public IntPtr LastAttachedHwnd => _attachedHwnd;
 
-    public DesktopLayerHost(IDesktopInterop? interop = null)
+    public DesktopLayerHost(IDesktopInterop? interop = null, IDesktopWallpaper? wallpaper = null, string? snapshotStaticDir = null)
     {
         _interop = interop ?? new NativeDesktopInterop();
         _display = new DisplayManager(_interop);
+        _snapshot = new OriginalWallpaperSnapshot(wallpaper, _interop, snapshotStaticDir);
     }
+
+    /// <summary>Exposed for tests: snapshot paths.</summary>
+    public OriginalWallpaperSnapshot Snapshot => _snapshot;
 
     /// <summary>
     /// Probe topology: FindWindow("Progman") -> GetWindowLongPtr(GWL_EXSTYLE) & WS_EX_NOREDIRECTIONBITMAP !=0 => raised.
@@ -122,6 +128,8 @@ public sealed class DesktopLayerHost : IDisposable
     {
         if (hwnd == IntPtr.Zero) throw new ArgumentException("hwnd must not be zero", nameof(hwnd));
         if (!_probed) Probe();
+        // Snapshot original wallpaper on first Attach (not on exit)
+        try { _snapshot.CaptureIfNeeded(); } catch { }
 
         // --- style swap: WS_POPUP -> WS_CHILD, never both ---
         var style = (uint)_interop.GetWindowLongPtr(hwnd, DesktopNative.GWL_STYLE);
@@ -478,16 +486,17 @@ public sealed class DesktopLayerHost : IDisposable
     }
 
     /// <summary>
-    /// Only place where SPI_SETDESKWALLPAPER / IDesktopWallpaper is called, on Dispose/final exit or Enable disable.
+    /// Restore via IDesktopWallpaper.SetWallpaper per-monitor (no SPI here).
+    /// SPI fallback only on final Dispose().
     /// Must NOT be called while alive except via Hide/disable path.
     /// </summary>
     public void RestoreDesktop()
     {
         try
         {
-            Log("RestoreDesktop: calling SPI_SETDESKWALLPAPER");
-            _interop.SystemParametersInfo(DesktopNative.SPI_SETDESKWALLPAPER, 0, null, DesktopNative.SPIF_UPDATEINIFILE | DesktopNative.SPIF_SENDCHANGE);
-            // IDesktopWallpaper COM would be invoked here if needed
+            Log("RestoreDesktop: calling IDesktopWallpaper.SetWallpaper per-monitor");
+            bool ok = _snapshot.Restore();
+            Log($"RestoreDesktop: snapshot restore ok={ok}");
         }
         catch (Exception ex)
         {
@@ -512,7 +521,18 @@ public sealed class DesktopLayerHost : IDisposable
         }
         catch { }
 
+        // First attempt per-monitor restore
         RestoreDesktop();
+        // Final fallback SPI_SETDESKWALLPAPER only on Dispose
+        try
+        {
+            Log("Dispose: fallback SPI_SETDESKWALLPAPER");
+            _interop.SystemParametersInfo(DesktopNative.SPI_SETDESKWALLPAPER, 0, null, DesktopNative.SPIF_UPDATEINIFILE | DesktopNative.SPIF_SENDCHANGE);
+        }
+        catch (Exception ex)
+        {
+            Log($"Dispose SPI fallback failed: {ex.Message}");
+        }
         // Do NOT cache Progman HWND after Explorer restart — clear
         LastProgman = IntPtr.Zero;
         LastWorkerW = IntPtr.Zero;

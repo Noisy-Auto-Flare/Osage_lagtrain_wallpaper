@@ -46,5 +46,7 @@
     <Compile Include="..\App\Shell\SingleInstanceManager.cs" Link="Shell\SingleInstanceManager.cs" />
     <Compile Include="..\App\Shell\EnableManager.cs" Link="Shell\EnableManager.cs" />
     <Compile Include="..\App\Shell\TrayIcon.cs" Link="Shell\TrayIcon.cs" />
+    <Compile Include="..\App\Shell\ConfigStore.cs" Link="Shell\ConfigStore.cs" />
+    <Compile Include="..\App\Shell\OriginalWallpaperSnapshot.cs" Link="Shell\OriginalWallpaperSnapshot.cs" />
   </ItemGroup>
 </Project>
