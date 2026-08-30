@@ -35,5 +35,11 @@
     <Compile Include="..\App\Rendering\NativeRenderingInterop.cs" Link="Rendering\NativeRenderingInterop.cs" />
     <Compile Include="..\App\Rendering\CompositionHost.cs" Link="Rendering\CompositionHost.cs" />
     <Compile Include="..\App\Rendering\WallpaperWindow.cs" Link="Rendering\WallpaperWindow.cs" />
+    <Compile Include="..\App\Ui\IFilePicker.cs" Link="Ui\IFilePicker.cs" />
+    <Compile Include="..\App\Ui\ICycleStore.cs" Link="Ui\ICycleStore.cs" />
+    <Compile Include="..\App\Ui\CycleStoreAdapter.cs" Link="Ui\CycleStoreAdapter.cs" />
+    <Compile Include="..\App\Ui\SceneListItem.cs" Link="Ui\SceneListItem.cs" />
+    <Compile Include="..\App\Ui\SettingsStore.cs" Link="Ui\SettingsStore.cs" />
+    <Compile Include="..\App\Ui\SettingsViewModel.cs" Link="Ui\SettingsViewModel.cs" />
   </ItemGroup>
 </Project>

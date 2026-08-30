@@ -181,6 +181,12 @@ public sealed class CycleStore
         catch { return false; }
     }
 
+    public void Reload()
+    {
+        // No cached state; next LoadAll will re-scan disk. Validate root still exists.
+        try { _ = LoadAll(); Log($"Reload cyclesRoot={_cyclesRoot}"); } catch (Exception ex) { Log($"Reload failed: {ex.Message}"); }
+    }
+
     private static void Log(string msg)
     {
         try { Console.WriteLine($"[CycleStore] {msg}"); } catch { }

@@ -7,7 +7,7 @@ public sealed class WindowMonitor : IDisposable
     private readonly IWindowInterop _interop;
     private readonly Func<DateTimeOffset> _nowProvider;
     private readonly Action<Action> _uiDispatcher;
-    private readonly int _globalPostEventDelayMs;
+    private int _globalPostEventDelayMs;
 
     private GCHandle _hookGCHandle;
     private WindowMonitorWinEventDelegate? _hookDelegate;
@@ -54,6 +54,20 @@ public sealed class WindowMonitor : IDisposable
     {
         _perSceneOverrideMs = ms.HasValue ? Math.Clamp(ms.Value, 0, 5000) : null;
     }
+
+    public void UpdateConfig(Cycles.SettingsConfig config)
+    {
+        if (config == null) return;
+        _globalPostEventDelayMs = Math.Clamp(config.PostEventDelayMs, 0, 5000);
+        // future: selectionPolicy, noRepeatWindow handled by scheduler, not monitor
+    }
+
+    public void UpdateConfig(int postEventDelayMs)
+    {
+        _globalPostEventDelayMs = Math.Clamp(postEventDelayMs, 0, 5000);
+    }
+
+    public int CurrentPostEventDelayMs => EffectivePostDelayMs;
 
     private int EffectivePostDelayMs => _perSceneOverrideMs ?? _globalPostEventDelayMs;
 
