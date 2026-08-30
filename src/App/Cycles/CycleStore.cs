@@ -10,9 +10,25 @@ public sealed class CycleStore
 
     public CycleStore(string? cyclesRoot = null, string? exeDirOverride = null, Func<string, bool>? webpProbe = null, Action<string>? toast = null)
     {
-        _cyclesRoot = cyclesRoot ?? ResolveCyclesRoot(exeDirOverride);
+        string raw = cyclesRoot ?? ResolveCyclesRoot(exeDirOverride);
+        _cyclesRoot = NormalizeCyclesRoot(raw, exeDirOverride);
         _webpSupportedProbe = webpProbe;
         _toast = toast;
+    }
+
+    private static string NormalizeCyclesRoot(string raw, string? exeDirOverride)
+    {
+        if (Path.IsPathRooted(raw)) return Path.GetFullPath(raw);
+        // Relative like "./cycles" or "cycles" or ".\cycles" → resolve against exe dir (portable probe)
+        string exeDir = exeDirOverride
+            ?? Path.GetDirectoryName(Environment.ProcessPath ?? AppContext.BaseDirectory)
+            ?? AppContext.BaseDirectory;
+        string trimmed = raw.Trim();
+        if (trimmed.StartsWith("./", StringComparison.Ordinal) || trimmed.StartsWith(@".\", StringComparison.Ordinal))
+            trimmed = trimmed.Substring(2);
+        else if (trimmed == "." || trimmed == "./" || trimmed == @".\") trimmed = string.Empty;
+        if (string.IsNullOrEmpty(trimmed)) return exeDir;
+        return Path.GetFullPath(Path.Combine(exeDir, trimmed));
     }
 
     /// <summary>Portable heuristic EXACT per spec.</summary>

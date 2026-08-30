@@ -31,5 +31,6 @@ public sealed class CycleStoreAdapter : ICycleStore
     public void UpdateRoot(string newCyclesRoot)
     {
         _inner = new CycleStore(newCyclesRoot);
+        Console.WriteLine($"[CycleStoreAdapter] UpdateRoot -> {_inner.CyclesRoot}");
     }
 }

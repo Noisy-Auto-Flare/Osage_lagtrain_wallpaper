@@ -132,20 +132,52 @@ public sealed partial class WindowMonitor : IDisposable
         if (fg != IntPtr.Zero)
         {
             bool covers = IsCovering(fg);
-            Log($"EvaluateCovering fg=0x{fg.ToInt64():X} class={_interop.GetClassName(fg)} covers={covers} isZoomed={_interop.IsZoomed(fg)} visible={_interop.IsWindowVisible(fg)}");
+            string exe = _interop.GetExeName(fg);
+            bool isSelf = string.Equals(exe, "OsageLagtrain.exe", StringComparison.OrdinalIgnoreCase);
+            Log($"EvaluateCovering fg=0x{fg.ToInt64():X} class={_interop.GetClassName(fg)} exe={exe} covers={covers} isZoomed={_interop.IsZoomed(fg)} visible={_interop.IsWindowVisible(fg)} isSelf={isSelf}");
             if (covers)
             {
                 _previousWasCovering = true;
                 _previousHwnd = fg;
                 _previousMonitorId = GetMonitorId(fg);
-                _previousExeName = _interop.GetExeName(fg);
+                _previousExeName = exe;
             }
             else
             {
-                _previousWasCovering = false;
-                _previousHwnd = fg;
-                _previousMonitorId = string.Empty;
-                _previousExeName = string.Empty;
+                // If previous was covering and new fg is our own Settings window (small, non-covering),
+                // still fire wallpaper advance — Settings shouldn't block desktop trigger.
+                if (_previousWasCovering && isSelf)
+                {
+                    var monitorId = _previousMonitorId;
+                    var exeName = _previousExeName;
+                    int delay = EffectivePostDelayMs;
+                    _previousWasCovering = false;
+                    _previousHwnd = fg;
+                    Log($"WallpaperShouldAdvance trigger selfFg after coverEnded monitor={monitorId} exe={exeName} delay={delay} fg=0x{fg.ToInt64():X} (Settings open fallback)");
+                    if (delay <= 0)
+                        WallpaperShouldAdvance?.Invoke(monitorId, exeName);
+                    else
+                    {
+                        var capturedMonitor = monitorId;
+                        var capturedExe = exeName;
+                        System.Threading.Timer? t = null;
+                        t = new System.Threading.Timer(_ =>
+                        {
+                            try { WallpaperShouldAdvance?.Invoke(capturedMonitor, capturedExe); } catch { }
+                            try { if (t != null) { lock (_advanceTimers) _advanceTimers.Remove(t); t.Dispose(); } } catch { }
+                        }, null, delay, Timeout.Infinite);
+                        lock (_advanceTimers) _advanceTimers.Add(t);
+                    }
+                    _previousMonitorId = string.Empty;
+                    _previousExeName = string.Empty;
+                }
+                else
+                {
+                    _previousWasCovering = false;
+                    _previousHwnd = fg;
+                    _previousMonitorId = string.Empty;
+                    _previousExeName = string.Empty;
+                }
             }
         }
         else

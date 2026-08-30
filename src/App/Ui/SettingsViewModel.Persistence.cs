@@ -15,8 +15,23 @@ public sealed partial class SettingsViewModel
         var updated = cfg with { Fps = fps };
         SelectedScene.UpdateFromConfig(updated, SelectedScene.Frames);
         OnPropertyChanged(nameof(SelectedFps));
+        OnPropertyChanged(nameof(SelectedScene));
         ScheduleSceneSave(SelectedScene);
-        if (IsPreviewPlaying) StartPreviewTimer();
+    }
+
+    internal void UpdateSelectedMode(bool isLoop)
+    {
+        if (SelectedScene == null) return;
+        var cfg = SelectedScene.Config;
+        if (cfg == null) return;
+        SceneMode newMode = isLoop ? new SceneMode.StringMode("loop") : new SceneMode.StringMode("once");
+        string cur = (cfg.Mode as SceneMode.StringMode)?.Value ?? "once";
+        string desired = isLoop ? "loop" : "once";
+        if (cur == desired) return;
+        var updated = cfg with { Mode = newMode };
+        SelectedScene.UpdateFromConfig(updated, SelectedScene.Frames);
+        OnPropertyChanged(nameof(SelectedScene));
+        ScheduleSceneSave(SelectedScene);
     }
 
     private void UpdateSelectedHoldLast(int ms)

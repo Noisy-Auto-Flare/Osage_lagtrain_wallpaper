@@ -60,7 +60,9 @@ public sealed partial class SettingsViewModel
         IsPreviewPlaying = true;
         _previewStart = DateTime.UtcNow;
         _previewElapsed = TimeSpan.Zero;
-        StartPreviewTimer();
+        // Preview timer is driven by SettingsWindow DispatcherTimer (83ms @12fps).
+        // ViewModel no longer spawns its own ThreadPool timer to avoid double-tick / cross-thread PropertyChanged.
+        StopPreviewTimer();
     }
 
     public void PausePreview()
@@ -71,12 +73,9 @@ public sealed partial class SettingsViewModel
 
     private void StartPreviewTimer()
     {
+        // Intentionally no-op: SettingsWindow owns the DispatcherTimer.
+        // Kept for compatibility with tests that call UpdateSelectedFps which previously restarted VM timer.
         StopPreviewTimer();
-        if (SelectedScene == null) return;
-        int fps = SelectedScene.Fps;
-        if (fps < 1) fps = 12;
-        var interval = FrameScheduler.GetInterval(fps);
-        _previewTimer = new System.Threading.Timer(_ => TickPreviewFromTimer(), null, interval, interval);
     }
 
     private void StopPreviewTimer()

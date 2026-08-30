@@ -226,11 +226,26 @@ public partial class App : Application
                         }
                         if (!attached)
                         {
-                            // Even if Attach failed (WorkerW not found), keep host window hidden - do not leave white window visible
-                            try { ShowWindow(hwndCopy, 0); } catch { }
-                            try { HideHostWindowImmediate(hwndCopy); } catch { }
-                            System.Diagnostics.Debug.WriteLine($"[App] Attach returned false - host window hidden (fallback) hwnd=0x{hwndCopy.ToInt64():X}");
-                            Console.WriteLine($"[App] Attach returned false - host window hidden fallback hwnd=0x{hwndCopy.ToInt64():X}");
+                            // Fallback: Attach failed (WorkerW not found on classic / missing SHELLDLL_DefView on raised) — do NOT hide forever.
+                            // Show fullscreen borderless window as fallback so idleColor #b2b2b2 and wallpaper frames still appear.
+                            // Keep TOOLWINDOW + not in switchers so it doesn't pollute Alt+Tab/taskbar.
+                            try
+                            {
+                                // Remove WS_CHILD added by Attach attempt, restore WS_POPUP for top-level fallback
+                                const int GWL_STYLE = -16;
+                                var style = GetWindowLongPtrW(hwndCopy, GWL_STYLE);
+                                long s = style.ToInt64();
+                                s &= ~0x40000000L; // WS_CHILD
+                                s |= 0x80000000L; // WS_POPUP (0x80000000 unsigned, keep as long)
+                                // Actually WS_POPUP = 0x80000000 which is negative int32; use unchecked
+                                s = (s & ~0x40000000L) | unchecked((long)0x80000000);
+                                SetWindowLongPtrW(hwndCopy, GWL_STYLE, new IntPtr(s));
+                            }
+                            catch { }
+                            try { EnsureWallpaperBehindDesktop(hwndCopy); } catch { }
+                            try { ShowWindow(hwndCopy, 8); } catch { } // SW_SHOWNA fallback visible
+                            System.Diagnostics.Debug.WriteLine($"[App] Attach returned false - fallback SW_SHOWNA shown hwnd=0x{hwndCopy.ToInt64():X} (WorkerW/DefView not found, fallback keeps wallpaper visible)");
+                            Console.WriteLine($"[App] Attach returned false - fallback SW_SHOWNA shown hwnd=0x{hwndCopy.ToInt64():X}");
                         }
                         else
                         {
@@ -258,8 +273,8 @@ public partial class App : Application
                     try { attached = desktopHostCopy.Attach(hwndCopy); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[App] background Attach (no dispatcher) failed: {ex.Message}"); }
                     if (!attached)
                     {
-                        try { ShowWindow(hwndCopy, 0); } catch { }
-                        try { HideHostWindowImmediate(hwndCopy); } catch { }
+                        try { EnsureWallpaperBehindDesktop(hwndCopy); } catch { }
+                        try { ShowWindow(hwndCopy, 8); } catch { }
                     }
                     else
                     {

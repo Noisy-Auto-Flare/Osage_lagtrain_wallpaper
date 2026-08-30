@@ -20,6 +20,20 @@ public sealed partial class SettingsWindow : Window
 
     public SettingsWindow(SettingsViewModel vm)
     {
+        // If default VM was created without hwnd provider (e.g. designer), patch picker to use this window's HWND
+        if (vm != null)
+        {
+            try
+            {
+                var field = typeof(SettingsViewModel).GetField("_filePicker", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var cur = field?.GetValue(vm) as IFilePicker;
+                if (cur is WinUIFolderPicker wp && wp.IsZeroHandle)
+                {
+                    field!.SetValue(vm, new WinUIFolderPicker(() => { try { return WindowNative.GetWindowHandle(this); } catch { return IntPtr.Zero; } }));
+                }
+            }
+            catch { }
+        }
         try
         {
             InitializeComponent();
@@ -59,7 +73,7 @@ public sealed partial class SettingsWindow : Window
         this.Closed += (_, _) => { try { _previewTimer.Stop(); } catch { } try { _vm.Dispose(); } catch { } Console.WriteLine("[SettingsWindow] Closed"); };
     }
 
-    private static SettingsViewModel CreateDefaultViewModel()
+    private static SettingsViewModel CreateDefaultViewModel(Func<IntPtr>? hwndProvider = null)
     {
         var settingsStore = new SettingsStore();
         var cfg = settingsStore.Load();
@@ -71,9 +85,9 @@ public sealed partial class SettingsWindow : Window
             update = c => monitor.UpdateConfig(c);
         }
         catch { }
-        var picker = new WinUIFolderPicker(SyncHandle());
+        Func<IntPtr> provider = hwndProvider ?? new Func<IntPtr>(() => IntPtr.Zero);
+        var picker = new WinUIFolderPicker(provider);
         return new SettingsViewModel(cycleStore, settingsStore, picker, update, debounceMs: 500);
-        static IntPtr SyncHandle() => IntPtr.Zero;
     }
 
     private bool _activated;
@@ -81,6 +95,14 @@ public sealed partial class SettingsWindow : Window
     {
         if (_activated) return;
         _activated = true;
+        // Refresh FolderPicker HWND now that window handle is valid
+        try
+        {
+            var field = typeof(SettingsViewModel).GetField("_filePicker", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (field?.GetValue(_vm) is WinUIFolderPicker wp && wp.IsZeroHandle)
+                field.SetValue(_vm, new WinUIFolderPicker(() => { try { return WindowNative.GetWindowHandle(this); } catch { return IntPtr.Zero; } }));
+        }
+        catch { }
         await OnLoadedAsync();
     }
 
@@ -163,6 +185,14 @@ public sealed partial class SettingsWindow : Window
                 if (HoldLastBox != null) HoldLastBox.Value = item.Config?.HoldLastMs ?? 0;
                 if (SceneDelayBox != null) SceneDelayBox.Value = item.Config?.PostEventDelayMs ?? double.NaN;
                 if (PreviewSlider != null) { PreviewSlider.Maximum = Math.Max(0, item.Frames.Count - 1); PreviewSlider.Value = _vm.CurrentFrameIndex; }
+                if (LoopCheckBox != null)
+                {
+                    string mode = (item.Config?.Mode as OsageLagtrain.App.Cycles.SceneMode.StringMode)?.Value ?? "once";
+                    LoopCheckBox.IsChecked = mode == "loop";
+                    LoopCheckBox.Content = mode == "loop" ? "Loop ✓" : "Once";
+                }
+                if (PreviewFrameInfo != null) PreviewFrameInfo.Text = $"{_vm.CurrentFrameIndex + 1} / {item.Frames.Count}  fps {item.Fps}";
+                Console.WriteLine($"[SettingsWindow] SelectedScene {item.Id} frames={item.Frames.Count} fps={item.Fps} first={item.Frames.FirstOrDefault()}");
                 UpdatePreviewImage();
                 UpdatePreviewInterval();
             }
@@ -179,18 +209,29 @@ public sealed partial class SettingsWindow : Window
             if (PreviewImage == null) return;
             if (string.IsNullOrEmpty(path) || !File.Exists(path))
             {
+                Console.WriteLine($"[SettingsWindow] UpdatePreviewImage no path exists path='{path ?? "null"}' selected={_vm.SelectedScene?.Id} frames={_vm.SelectedScene?.Frames.Count}");
                 PreviewImage.Source = null;
+                if (PreviewFrameInfo != null) PreviewFrameInfo.Text = _vm.SelectedScene == null ? "No scene selected" : $"No frames ({_vm.SelectedScene.Frames.Count})";
                 return;
             }
             try
             {
-                var bmp = new BitmapImage(new Uri(path));
+                // WinUI3 requires file:/// absolute Uri; BitmapImage(path) with raw C:\ may fail silently.
+                string fileUrl = path;
+                if (!fileUrl.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+                {
+                    fileUrl = new Uri(Path.GetFullPath(path), UriKind.Absolute).AbsoluteUri;
+                }
+                var bmp = new BitmapImage(new Uri(fileUrl, UriKind.Absolute));
                 PreviewImage.Source = bmp;
-                if (PreviewSlider != null) PreviewSlider.Value = _vm.CurrentFrameIndex;
+                if (PreviewSlider != null) { PreviewSlider.Maximum = Math.Max(0, (_vm.SelectedScene?.Frames.Count ?? 1) - 1); PreviewSlider.Value = _vm.CurrentFrameIndex; }
+                if (PreviewFrameInfo != null && _vm.SelectedScene != null)
+                    PreviewFrameInfo.Text = $"{_vm.CurrentFrameIndex + 1} / {_vm.SelectedScene.Frames.Count}  fps {_vm.SelectedScene.Fps}  {( _vm.IsPreviewPlaying ? "▶" : "⏸")}  {Path.GetFileName(path)}";
+                Console.WriteLine($"[SettingsWindow] UpdatePreviewImage ok idx={_vm.CurrentFrameIndex} path={Path.GetFileName(path)} fps={_vm.SelectedScene?.Fps}");
             }
-            catch (Exception ex) { Console.WriteLine($"[SettingsWindow] UpdatePreviewImage failed: {ex.Message}"); }
+            catch (Exception ex) { Console.WriteLine($"[SettingsWindow] UpdatePreviewImage failed: {ex.Message} path={path}"); }
         }
-        catch { }
+        catch (Exception ex) { Console.WriteLine($"[SettingsWindow] UpdatePreviewImage outer failed: {ex.Message}"); }
     }
 
     private void UpdatePreviewInterval()
@@ -218,7 +259,14 @@ public sealed partial class SettingsWindow : Window
         _previewTimer.Stop();
     }
 
-    private void OnLoopToggled(object sender, RoutedEventArgs e) { UpdatePreviewInterval(); }
+    private void OnLoopToggled(object sender, RoutedEventArgs e)
+    {
+        if (_isInitializing) return;
+        bool isLoop = LoopCheckBox?.IsChecked == true;
+        _vm.UpdateSelectedMode(isLoop);
+        if (LoopCheckBox != null) LoopCheckBox.Content = isLoop ? "Loop ✓" : "Once";
+        UpdatePreviewInterval();
+    }
 
     private void OnSliderChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
@@ -311,25 +359,54 @@ public sealed partial class SettingsWindow : Window
 #if WINDOWS
     private sealed class WinUIFolderPicker : IFilePicker
     {
-        private readonly IntPtr _hwnd;
-        public WinUIFolderPicker(IntPtr hwnd) => _hwnd = hwnd;
+        private readonly Func<IntPtr> _hwndProvider;
+        private readonly IntPtr _fixed;
+        public bool IsZeroHandle => _fixed == IntPtr.Zero && _hwndProvider() == IntPtr.Zero;
+        public WinUIFolderPicker(IntPtr hwnd) { _fixed = hwnd; _hwndProvider = () => hwnd; }
+        public WinUIFolderPicker(Func<IntPtr> provider) { _fixed = IntPtr.Zero; _hwndProvider = provider; }
         public async Task<string?> PickFolderAsync(string initialPath)
         {
             try
             {
                 var picker = new FolderPicker();
                 picker.FileTypeFilter.Add("*");
-                IntPtr hwnd = _hwnd;
+                IntPtr hwnd = _fixed != IntPtr.Zero ? _fixed : _hwndProvider();
                 if (hwnd == IntPtr.Zero)
                 {
-                    try { hwnd = WindowNative.GetWindowHandle(App.Current); } catch { }
+                    try
+                    {
+                        // Try to get any active window handle via App.Current dispatcher fallback — else zero
+                        // Caller should have supplied provider via SettingsWindow constructor
+                    }
+                    catch { }
                 }
+                // For WinUI3 FolderPicker, HWND init is REQUIRED else it silently fails (no dialog)
                 if (hwnd != IntPtr.Zero)
+                {
                     InitializeWithWindow.Initialize(picker, hwnd);
-                var folder = await picker.PickSingleFolderAsync();
-                return folder?.Path;
+                    Console.WriteLine($"[WinUIFolderPicker] InitializeWithWindow hwnd=0x{hwnd.ToInt64():X}");
+                }
+                else
+                {
+                    Console.WriteLine("[WinUIFolderPicker] hwnd zero - picker will silently fail (fix: ensure SettingsWindow activated before Browse)");
+                }
+                if (!string.IsNullOrEmpty(initialPath) && Directory.Exists(initialPath))
+                {
+                    try
+                    {
+                        var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetFullPath(initialPath));
+                        picker.SuggestedStartLocation = PickerLocationId.ComputerFolder;
+                        // Setting SuggestedStartLocation after getting folder is unreliable for FolderPicker, but we try
+                    }
+                    catch { }
+                }
+                picker.SuggestedStartLocation = PickerLocationId.ComputerFolder;
+                var picked = await picker.PickSingleFolderAsync();
+                string? result = picked?.Path;
+                Console.WriteLine($"[WinUIFolderPicker] picked='{result ?? "null (cancelled)"}'");
+                return result;
             }
-            catch { return null; }
+            catch (Exception ex) { Console.WriteLine($"[WinUIFolderPicker] fail: {ex.Message}"); return null; }
         }
     }
 #endif

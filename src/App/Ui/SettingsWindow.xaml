@@ -20,14 +20,14 @@
                 </Grid.RowDefinitions>
                 <!-- Folder row -->
                 <StackPanel Grid.Row="0" Margin="12">
-                    <TextBlock Text="Cycles Folder" Foreground="#e8e8e8" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                    <TextBlock Text="Cycles Folder" Foreground="#e8e8e8" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" ToolTipService.ToolTip="Folder containing scene subfolders (each with scene.json + 0001.png...). Default ./cycles next to exe, or %APPDATA%/OsageLagtrain/cycles if exe dir not writable."/>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Name="CyclesRootTextBox" Grid.Column="0" PlaceholderText="./cycles"/>
-                        <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse" Margin="8,0,0,0" Click="OnBrowseClicked"/>
+                        <TextBox x:Name="CyclesRootTextBox" Grid.Column="0" PlaceholderText="./cycles" ToolTipService.ToolTip="Cycles root path. Edit then Browse or save. Relative paths resolved against exe dir."/>
+                        <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse" Margin="8,0,0,0" Click="OnBrowseClicked" ToolTipService.ToolTip="Open FolderPicker (requires Window HWND init via InitializeWithWindow — else silently fails). Picks cycles root and reloads scenes."/>
                     </Grid>
                 </StackPanel>
                 <Button Grid.Row="1" x:Name="AddSceneButton" Content="+ Add Scene" Margin="12,0,12,8" HorizontalAlignment="Stretch" Click="OnAddSceneClicked"/>
@@ -43,7 +43,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <Border Width="48" Height="36" Background="#1a1a1a" CornerRadius="4">
+                                <Border Width="48" Height="36" Background="#1a1a1a" CornerRadius="4" ToolTipService.ToolTip="Thumbnail = first frame (0001.png) sorted naturally. Purple/Green ✔ = valid scene, Red ✖ = invalid (missing scene.json or no frames).">
                                     <Image Source="{Binding ThumbnailPath}" Stretch="UniformToFill"/>
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
@@ -71,18 +71,21 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <!-- Preview Image -->
-                <Border Margin="16" Background="#b2b2b2" CornerRadius="8">
-                    <Image x:Name="PreviewImage" Stretch="Uniform" />
+                <!-- Preview Image: Border shows idleColor #b2b2b2 when no frame or letterboxed; Image on top (Uniform) shows B&W frame -->
+                <Border Margin="16" Background="#b2b2b2" CornerRadius="8" ToolTipService.ToolTip="Preview: shows first frame of selected scene. Play flips at scene fps (12 fps = 83 ms per frame). Grey = idleColor #b2b2b2 shown when not playing or letterboxed.">
+                    <Grid>
+                        <Image x:Name="PreviewImage" Stretch="Uniform" />
+                        <TextBlock x:Name="PreviewFrameInfo" Text="0 / 0" Foreground="#666666" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8" Opacity="0.7"/>
+                    </Grid>
                 </Border>
-                <!-- Slider scrub -->
-                <Slider Grid.Row="1" x:Name="PreviewSlider" Margin="16,0" Minimum="0" Maximum="5" ValueChanged="OnSliderChanged"/>
+                <!-- Slider scrub: Maximum set dynamically to frames.Count-1 in code-behind (was 5 placeholder) -->
+                <Slider Grid.Row="1" x:Name="PreviewSlider" Margin="16,0" Minimum="0" Maximum="5" ValueChanged="OnSliderChanged" ToolTipService.ToolTip="Scrub through frames. Max = last frame index (frames-1). Updates preview image."/>
                 <!-- Controls -->
                 <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="16,8" HorizontalAlignment="Center">
-                    <Button x:Name="PlayButton" Content="Play" Click="OnPlayClicked" Margin="0,0,8,0"/>
-                    <Button x:Name="PauseButton" Content="Pause" Click="OnPauseClicked" Margin="0,0,8,0"/>
-                    <CheckBox x:Name="LoopCheckBox" Content="Loop" IsChecked="True" Margin="0,0,8,0"/>
-                    <TextBlock Text="fps preview" VerticalAlignment="Center" Foreground="#b2b2b2" Margin="8,0,0,0"/>
+                    <Button x:Name="PlayButton" Content="Play" Click="OnPlayClicked" Margin="0,0,8,0" ToolTipService.ToolTip="Play preview at scene fps (DispatcherTimer 1000/fps). 12 fps = 83 ms/frame. Loop checkbox controls whether preview loops or stops."/>
+                    <Button x:Name="PauseButton" Content="Pause" Click="OnPauseClicked" Margin="0,0,8,0" ToolTipService.ToolTip="Pause preview — freezes on current frame."/>
+                    <CheckBox x:Name="LoopCheckBox" Content="Loop" IsChecked="True" Margin="0,0,8,0" Click="OnLoopToggled" ToolTipService.ToolTip="Per-scene Mode: Loop=repeat forever (mode:loop), Once=play once then show idleColor #b2b2b2. Saved to scene.json immediately (debounced)."/>
+                    <TextBlock Text="fps preview" VerticalAlignment="Center" Foreground="#b2b2b2" Margin="8,0,0,0" ToolTipService.ToolTip="Preview playback fps — same as scene fps (12 default). Same interval used for desktop wallpaper playback."/>
                 </StackPanel>
                 <!-- Per-scene NumberBoxes -->
                 <Grid Grid.Row="3" Margin="16,0,16,16">
@@ -112,27 +115,27 @@
             <ScrollViewer>
             <StackPanel Margin="16">
                 <TextBlock Text="Global" Foreground="#e8e8e8" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
-                <TextBlock Text="postEventDelayMs" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4"/>
-                <NumberBox x:Name="GlobalDelayBox" Minimum="0" Maximum="5000" SpinButtonPlacementMode="Inline" ValueChanged="OnGlobalDelayChanged" Margin="0,0,0,12"/>
-                <TextBlock Text="selectionPolicy" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4"/>
-                <ComboBox x:Name="SelectionPolicyCombo" HorizontalAlignment="Stretch" SelectionChanged="OnSelectionPolicyChanged" Margin="0,0,0,12">
-                    <ComboBoxItem Content="randomNoRepeat" Tag="randomNoRepeat"/>
-                    <ComboBoxItem Content="randomPure" Tag="randomPure"/>
-                    <ComboBoxItem Content="sequentialByName" Tag="sequentialByName"/>
-                    <ComboBoxItem Content="sequentialByMtime" Tag="sequentialByMtime"/>
+                <TextBlock Text="postEventDelayMs — debounce after desktop becomes foreground before playing" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4" ToolTipService.ToolTip="Global postEventDelayMs (500 ms default). Per-scene postEventDelayMs overrides this. Time between maximized window closing → desktop foreground → wallpaper starts."/>
+                <NumberBox x:Name="GlobalDelayBox" Minimum="0" Maximum="5000" SpinButtonPlacementMode="Inline" ValueChanged="OnGlobalDelayChanged" Margin="0,0,0,12" ToolTipService.ToolTip="Global delay 0..5000 ms. Triggers via WindowMonitor after covering window closes."/>
+                <TextBlock Text="selectionPolicy — how next scene is picked" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4" ToolTipService.ToolTip="randomNoRepeat=avoid last N (default), randomPure=uniform random, sequentialByName=alphabetical, sequentialByMtime=recent mtime."/>
+                <ComboBox x:Name="SelectionPolicyCombo" HorizontalAlignment="Stretch" SelectionChanged="OnSelectionPolicyChanged" Margin="0,0,0,12" ToolTipService.ToolTip="Policy for picking next wallpaper scene after desktop trigger.">
+                    <ComboBoxItem Content="randomNoRepeat" Tag="randomNoRepeat" ToolTipService.ToolTip="Avoid last noRepeatWindow scenes (default)"/>
+                    <ComboBoxItem Content="randomPure" Tag="randomPure" ToolTipService.ToolTip="Pure uniform random, may repeat consecutively"/>
+                    <ComboBoxItem Content="sequentialByName" Tag="sequentialByName" ToolTipService.ToolTip="Alphabetical by folder name"/>
+                    <ComboBoxItem Content="sequentialByMtime" Tag="sequentialByMtime" ToolTipService.ToolTip="By last-write time mtimeCursor"/>
                 </ComboBox>
-                <TextBlock Text="noRepeatWindow" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4"/>
-                <NumberBox x:Name="NoRepeatBox" Minimum="0" Maximum="20" SpinButtonPlacementMode="Inline" ValueChanged="OnNoRepeatChanged" Margin="0,0,0,12"/>
-                <TextBlock Text="idleColor" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4"/>
+                <TextBlock Text="noRepeatWindow — size of dedup window" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4" ToolTipService.ToolTip="How many recent scenes to avoid when selectionPolicy=randomNoRepeat. 0=allow immediate repeat, 3=default, capped at 20. History truncated to 1024 bytes."/>
+                <NumberBox x:Name="NoRepeatBox" Minimum="0" Maximum="20" SpinButtonPlacementMode="Inline" ValueChanged="OnNoRepeatChanged" Margin="0,0,0,12" ToolTipService.ToolTip="Dedup window size (0..20)."/>
+                <TextBlock Text="idleColor — desktop solid when not playing" Foreground="#b2b2b2" FontSize="11" Margin="0,0,0,4" ToolTipService.ToolTip="Solid color shown on desktop when no cycle is playing (and as preview Border background). Default #b2b2b2 grey. Must be #RRGGBB."/>
                 <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="IdleColorBox" Text="#b2b2b2" PlaceholderText="#b2b2b2" TextChanged="OnIdleColorChanged"/>
-                    <Button Grid.Column="1" Content="Pick" Margin="8,0,0,0" Click="OnPickIdleColor"/>
+                    <TextBox x:Name="IdleColorBox" Text="#b2b2b2" PlaceholderText="#b2b2b2" TextChanged="OnIdleColorChanged" ToolTipService.ToolTip="Hex color #RRGGBB. Validation: regex ^#[0-9a-fA-F]{6}$ . Blue check in list? Actually validation check ✔ purple/green = scene valid, red ✖ = invalid."/>
+                    <Button Grid.Column="1" Content="Pick" Margin="8,0,0,0" Click="OnPickIdleColor" ToolTipService.ToolTip="Toggle ColorPicker visibility. Pick → sets IdleColorBox → live debounced save."/>
                 </Grid>
-                <ColorPicker x:Name="IdleColorPicker" IsMoreButtonVisible="False" IsColorSpectrumVisible="True" IsColorPreviewVisible="True" ColorChanged="OnColorPickerChanged" Visibility="Collapsed" Margin="0,0,0,12"/>
+                <ColorPicker x:Name="IdleColorPicker" IsMoreButtonVisible="False" IsColorSpectrumVisible="True" IsColorPreviewVisible="True" ColorChanged="OnColorPickerChanged" Visibility="Collapsed" Margin="0,0,0,12" ToolTipService.ToolTip="ColorPicker for idleColor. More button hidden; spectrum + preview visible."/>
                 <Border x:Name="AppMapPanel" Visibility="Collapsed" Background="#1a1a1a" Padding="8" CornerRadius="6" Margin="0,0,0,8">
                     <StackPanel>
                         <TextBlock Text="appMap (per-exe)" Foreground="#e8e8e8" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
