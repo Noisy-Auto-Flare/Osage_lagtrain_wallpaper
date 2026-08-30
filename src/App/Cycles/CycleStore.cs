@@ -44,18 +44,47 @@ public sealed class CycleStore
     public IReadOnlyList<CycleInfo> LoadAll()
     {
         if (!Directory.Exists(_cyclesRoot))
+        {
+            Log($"LoadAll root missing: {_cyclesRoot}");
             return Array.Empty<CycleInfo>();
+        }
 
         var dirs = Directory.GetDirectories(_cyclesRoot);
+        Log($"LoadAll scanning {_cyclesRoot} dirs={dirs.Length}: {string.Join(",", dirs.Select(d=>Path.GetFileName(d)))}");
         var result = new List<CycleInfo>();
+        var errors = new List<Exception>();
         foreach (var dir in dirs)
         {
             // Each subdir is a scene; must have scene.json
             var scenePath = Path.Combine(dir, "scene.json");
             if (!File.Exists(scenePath))
+            {
+                Log($"LoadAll skip {Path.GetFileName(dir)} — missing scene.json");
                 continue; // skip dirs without scene.json (not a scene)
-            var info = LoadScene(dir);
-            result.Add(info);
+            }
+            try
+            {
+                var info = LoadScene(dir);
+                Log($"LoadAll loaded id={info.Id} title={info.Title} dir={Path.GetFileName(dir)} frames={info.Frames.Count} fps={info.Config.Fps}");
+                result.Add(info);
+            }
+            catch (Exception ex)
+            {
+                Log($"LoadAll failed dir={Path.GetFileName(dir)}: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[CycleStore] LoadAll failed {dir}: {ex}");
+                errors.Add(ex);
+                // Do not throw immediately — collect so one bad scene doesn't hide valid ones like cycles\1
+            }
+        }
+        Log($"LoadAll complete count={result.Count} ids=[{string.Join(",", result.Select(r=>r.Id))}] errors={errors.Count}");
+        if (result.Count == 0 && errors.Count > 0)
+        {
+            // No valid scenes but at least one error — propagate first error to preserve validation behavior (tests expect throws)
+            var first = errors[0];
+            // Re-throw preserving type when possible
+            if (first is CycleValidationError) throw first;
+            if (first is SchemaValidationException) throw first;
+            throw new CycleValidationError(first.Message, _cyclesRoot, first);
         }
         return result;
     }

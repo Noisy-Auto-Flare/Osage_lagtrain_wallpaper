@@ -105,6 +105,9 @@ public partial class App : Application
     [DllImport("user32.dll")]
     private static extern bool PostMessageW(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int MessageBoxW(IntPtr hWnd, string lpText, string lpCaption, uint uType);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X; public int Y; }
 
@@ -497,95 +500,273 @@ public partial class App : Application
 
     private void ShowSettings()
     {
-        var dq = _wallpaperHostWindow?.DispatcherQueue ?? Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        if (dq == null)
+        Console.WriteLine("[App] ShowSettings opening");
+        System.Diagnostics.Debug.WriteLine("[App] ShowSettings opening");
+        try
         {
-            try { _settingsWindow = new SettingsWindow(); _settingsWindow.Activate(); } catch { }
-            return;
-        }
-        dq.TryEnqueue(() =>
-        {
-            try
+            var dq = _wallpaperHostWindow?.DispatcherQueue;
+            if (dq == null)
             {
-                if (_settingsWindow != null)
+                try { dq = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(); } catch { dq = null; }
+            }
+            // If we have a dispatcher and we're not on its thread, enqueue; otherwise execute directly.
+            bool hasAccess = false;
+            try { hasAccess = dq?.HasThreadAccess ?? false; } catch { hasAccess = false; }
+            if (dq != null && !hasAccess)
+            {
+                bool enqueued = false;
+                try { enqueued = dq.TryEnqueue(() => ShowSettingsCore()); } catch (Exception ex) { Console.WriteLine($"[App] ShowSettings TryEnqueue threw: {ex}"); enqueued = false; }
+                Console.WriteLine($"[App] ShowSettings TryEnqueue={enqueued} hasAccess={hasAccess}");
+                System.Diagnostics.Debug.WriteLine($"[App] ShowSettings TryEnqueue={enqueued}");
+                if (enqueued) return;
+                Console.WriteLine("[App] ShowSettings TryEnqueue failed — falling back to direct core");
+            }
+            ShowSettingsCore();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[App] ShowSettings failed: {ex}");
+            System.Diagnostics.Debug.WriteLine($"[App] ShowSettings failed: {ex}");
+            try { MessageBoxW(IntPtr.Zero, $"Show Settings failed:\n{ex.Message}\n{ex}", "Osage Lagtrain", 0x10); } catch { }
+        }
+    }
+
+    private void ShowSettingsCore()
+    {
+        Console.WriteLine("[App] ShowSettingsCore start");
+        try
+        {
+            if (_settingsWindow != null)
+            {
+                Console.WriteLine("[App] ShowSettingsCore reactivating existing window");
+                try
                 {
                     var hwnd = WindowNative.GetWindowHandle(_settingsWindow);
-                    ShowWindow(hwnd, 9);
+                    Console.WriteLine($"[App] ShowSettingsCore existing hwnd=0x{hwnd.ToInt64():X} attempting ShowWindow/Activate");
+                    try { ShowWindow(hwnd, 9); } catch (Exception ex) { Console.WriteLine($"[App] ShowWindow restore failed: {ex.Message}"); }
+                    try
+                    {
+                        var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+                        var aw = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
+                        if (aw != null) { aw.IsShownInSwitchers = true; Console.WriteLine("[App] ShowSettingsCore set IsShownInSwitchers=true"); }
+                    }
+                    catch (Exception ex) { Console.WriteLine($"[App] AppWindow ensure visible failed: {ex.Message}"); }
                     _settingsWindow.Activate();
+                    try { ShowWindow(hwnd, 9); } catch { }
+                    // Bring to foreground
+                    try { SetForegroundWindow(hwnd); } catch { }
+                    Console.WriteLine("[App] ShowSettingsCore re-activated existing window ok");
                     return;
                 }
-                _settingsWindow = new SettingsWindow();
-                _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-                _settingsWindow.Activate();
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[App] ShowSettingsCore reactivate failed: {ex} — recreating");
+                    try { _settingsWindow = null; } catch { }
+                }
+            }
+            Console.WriteLine("[App] ShowSettingsCore creating new SettingsWindow");
+            SettingsWindow win;
+            try
+            {
+                win = new SettingsWindow();
+                Console.WriteLine("[App] ShowSettingsCore SettingsWindow constructed ok");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[App] ShowSettings failed: {ex.Message}");
+                Console.WriteLine($"[App] ShowSettingsCore SettingsWindow ctor failed: {ex}");
+                System.Diagnostics.Debug.WriteLine($"[App] SettingsWindow ctor failed: {ex}");
+                // Fallback simple window so user still gets visible feedback
+                try
+                {
+                    var fallback = new Window();
+                    fallback.Title = "Osage Lagtrain — Settings (fallback)";
+                    fallback.Content = new Microsoft.UI.Xaml.Controls.TextBlock { Text = $"Settings failed to load:\n{ex.Message}\n\n{ex}", TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap, Margin = new Microsoft.UI.Xaml.Thickness(16) };
+                    fallback.Activate();
+                    try
+                    {
+                        var fhwnd = WindowNative.GetWindowHandle(fallback);
+                        ShowWindow(fhwnd, 9);
+                        var fid = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(fhwnd);
+                        var faw = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(fid);
+                        if (faw != null) faw.IsShownInSwitchers = true;
+                    }
+                    catch { }
+                    Console.WriteLine("[App] ShowSettingsCore fallback window shown");
+                }
+                catch (Exception ex2) { Console.WriteLine($"[App] fallback window failed: {ex2}"); }
+                try { MessageBoxW(IntPtr.Zero, $"Show Settings failed:\n{ex.Message}\n\n{ex}", "Osage Lagtrain", 0x10); } catch { }
+                return;
             }
-        });
+            _settingsWindow = win;
+            _settingsWindow.Closed += (_, _) => { Console.WriteLine("[App] SettingsWindow closed"); _settingsWindow = null; };
+            try
+            {
+                _settingsWindow.Activate();
+                Console.WriteLine("[App] ShowSettingsCore Activate called");
+            }
+            catch (Exception ex) { Console.WriteLine($"[App] Activate threw: {ex}"); throw; }
+            try
+            {
+                var hwnd2 = WindowNative.GetWindowHandle(_settingsWindow);
+                Console.WriteLine($"[App] ShowSettingsCore new hwnd=0x{hwnd2.ToInt64():X} ensuring visible");
+                try { ShowWindow(hwnd2, 9); } catch (Exception ex) { Console.WriteLine($"[App] ShowWindow new failed: {ex.Message}"); }
+                try
+                {
+                    var id2 = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd2);
+                    var aw2 = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id2);
+                    if (aw2 != null) { aw2.IsShownInSwitchers = true; Console.WriteLine("[App] new window IsShownInSwitchers=true"); }
+                }
+                catch (Exception ex) { Console.WriteLine($"[App] AppWindow visible new failed: {ex.Message}"); }
+                try { SetForegroundWindow(hwnd2); } catch { }
+                // Second activate to ensure foreground
+                try { _settingsWindow.Activate(); } catch { }
+            }
+            catch (Exception ex) { Console.WriteLine($"[App] post-Activate visibility failed: {ex.Message}"); }
+            Console.WriteLine("[App] ShowSettings opened ok");
+            System.Diagnostics.Debug.WriteLine("[App] ShowSettings opened ok");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[App] ShowSettingsCore failed: {ex}");
+            System.Diagnostics.Debug.WriteLine($"[App] ShowSettingsCore failed: {ex}");
+            try { MessageBoxW(IntPtr.Zero, $"Show Settings failed:\n{ex.Message}\n{ex}", "Osage Lagtrain", 0x10); } catch { }
+        }
     }
 
     private void OnWallpaperShouldAdvance(string monitorId, string exeName)
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine($"[App] WallpaperShouldAdvance monitor={monitorId} exe={exeName}");
-            Console.WriteLine($"[App] WallpaperShouldAdvance monitor={monitorId} exe={exeName}");
-            if (_cycleStore == null || _configStore == null || _selectionPolicy == null) return;
-            var settings = _configStore.LoadSettings();
-            var all = _cycleStore.LoadAll();
-            if (all.Count == 0) return;
+            string logPrefix = $"[App] WallpaperShouldAdvance monitor={monitorId} exe={exeName}";
+            System.Diagnostics.Debug.WriteLine(logPrefix);
+            Console.WriteLine(logPrefix);
+            Console.WriteLine($"[App] WallpaperShouldAdvance — _cycleStore={_cycleStore != null} _configStore={_configStore != null} _selectionPolicy={_selectionPolicy != null} _wallpaperWindow={_wallpaperWindow != null} _hwnd=0x{_hwnd.ToInt64():X}");
+            if (_cycleStore == null || _configStore == null || _selectionPolicy == null)
+            {
+                Console.WriteLine("[App] WallpaperShouldAdvance aborted: store/policy null");
+                return;
+            }
+            SettingsConfig settings;
+            try { settings = _configStore.LoadSettings(); Console.WriteLine($"[App] WallpaperShouldAdvance settings cyclesRoot={settings.CyclesRoot} idleColor={settings.IdleColor} policy={settings.SelectionPolicy} noRepeat={settings.NoRepeatWindow}"); } catch (Exception ex) { Console.WriteLine($"[App] LoadSettings failed: {ex}"); return; }
+            IReadOnlyList<CycleInfo> all;
+            try { all = _cycleStore.LoadAll(); Console.WriteLine($"[App] WallpaperShouldAdvance LoadAll found {all.Count} scenes: {string.Join(",", all.Select(c => c.Id))} (root={_cycleStore.CyclesRoot})"); } catch (Exception ex) { Console.WriteLine($"[App] CycleStore LoadAll threw: {ex}"); System.Diagnostics.Debug.WriteLine($"[App] LoadAll threw: {ex}"); return; }
+            if (all.Count == 0)
+            {
+                Console.WriteLine($"[App] WallpaperShouldAdvance no scenes found in {_cycleStore.CyclesRoot} — check cycles\\1\\scene.json exists and valid; dirs={string.Join(",", Directory.Exists(_cycleStore.CyclesRoot) ? Directory.GetDirectories(_cycleStore.CyclesRoot).Select(Path.GetFileName) : new[]{ "(root missing)" })}");
+                System.Diagnostics.Debug.WriteLine("[App] WallpaperShouldAdvance no scenes");
+                return;
+            }
 
             IReadOnlyList<CycleInfo> eligible;
             if (settings.AppMap != null && !string.IsNullOrEmpty(exeName) && settings.AppMap.TryGetValue(exeName, out var allowedIds))
             {
                 var allowedSet = new HashSet<string>(allowedIds, StringComparer.OrdinalIgnoreCase);
                 var filtered = all.Where(c => allowedSet.Contains(c.Id)).ToList();
+                Console.WriteLine($"[App] WallpaperShouldAdvance appMap filter exe={exeName} allowed={string.Join(",", allowedIds)} filtered={filtered.Count}");
                 eligible = filtered.Count > 0 ? filtered : all;
+                if (filtered.Count == 0) Console.WriteLine("[App] WallpaperShouldAdvance appMap filtered 0 — fallback to all");
             }
             else
             {
+                Console.WriteLine($"[App] WallpaperShouldAdvance no appMap filter — eligible=all ({all.Count}) exe={exeName} appMap={(settings.AppMap==null ? "null" : settings.AppMap.Count.ToString())}");
                 eligible = all;
             }
 
             var history = _configStore.LoadHistory();
+            Console.WriteLine($"[App] WallpaperShouldAdvance history recent=[{string.Join(",", history.Recent)}] cursor={history.MtimeCursor}");
             var pickedId = _selectionPolicy.Pick(eligible, history, exeName?.ToLowerInvariant(), settings.AppMap);
-            if (string.IsNullOrEmpty(pickedId)) return;
+            Console.WriteLine($"[App] WallpaperShouldAdvance pickedId={pickedId ?? "(null)"} from eligible=[{string.Join(",", eligible.Select(c=>c.Id))}]");
+            if (string.IsNullOrEmpty(pickedId))
+            {
+                Console.WriteLine("[App] WallpaperShouldAdvance pickedId empty — abort");
+                return;
+            }
 
             var picked = eligible.FirstOrDefault(c => string.Equals(c.Id, pickedId, StringComparison.Ordinal)) ?? all.FirstOrDefault(c => c.Id == pickedId);
-            if (picked == null) return;
+            if (picked == null)
+            {
+                Console.WriteLine($"[App] WallpaperShouldAdvance picked id={pickedId} not found in eligible/all — abort");
+                return;
+            }
+            Console.WriteLine($"[App] WallpaperShouldAdvance picked scene id={picked.Id} title={picked.Title} fps={picked.Config.Fps} frames={picked.Frames.Count} dir={picked.DirPath}");
 
-            try { _configStore.AppendHistory(picked.Id, settings.NoRepeatWindow); } catch { }
-            try { _windowMonitor?.SetPerSceneDelay(picked.Config.PostEventDelayMs); } catch { }
+            try { _configStore.AppendHistory(picked.Id, settings.NoRepeatWindow); Console.WriteLine($"[App] AppendHistory {picked.Id} ok"); } catch (Exception ex) { Console.WriteLine($"[App] AppendHistory failed: {ex.Message}"); }
+            try { _windowMonitor?.SetPerSceneDelay(picked.Config.PostEventDelayMs); Console.WriteLine($"[App] SetPerSceneDelay {(picked.Config.PostEventDelayMs?.ToString() ?? "null")}"); } catch (Exception ex) { Console.WriteLine($"[App] SetPerSceneDelay failed: {ex.Message}"); }
 
-            var dq = _wallpaperHostWindow?.DispatcherQueue ?? Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-            if (dq == null) return;
-            dq.TryEnqueue(async () =>
+            var dq = _wallpaperHostWindow?.DispatcherQueue;
+            if (dq == null) { try { dq = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(); } catch { dq = null; } }
+            Console.WriteLine($"[App] WallpaperShouldAdvance dispatching Play to UI thread dq={(dq==null?"null":"ok")} hasAccess={(dq?.HasThreadAccess.ToString() ?? "n/a")}");
+            if (dq == null)
+            {
+                Console.WriteLine("[App] WallpaperShouldAdvance no dispatcher — trying direct Play on calling thread");
+                try
+                {
+                    if (_wallpaperWindow != null)
+                    {
+                        var fps = _cycleStore.GetFrames(picked.Id);
+                        var b = new List<byte[]>();
+                        foreach (var p in fps) { try { b.Add(File.ReadAllBytes(p)); Console.WriteLine($"[App] Read frame {p} {b.Last().Length} bytes"); } catch (Exception ex) { Console.WriteLine($"[App] Read frame failed {p}: {ex.Message}"); } }
+                        Console.WriteLine($"[App] Direct Play bytes={b.Count} before Play");
+                        _wallpaperWindow.SetIdleColor(settings.IdleColor);
+                        _wallpaperWindow.Play(picked, b);
+                        Console.WriteLine($"[App] Direct Play ok scene={picked.Id} frames={b.Count}");
+                    }
+                }
+                catch (Exception ex) { Console.WriteLine($"[App] Direct Play failed: {ex}"); System.Diagnostics.Debug.WriteLine($"[App] Direct Play failed: {ex}"); }
+                return;
+            }
+            bool enq = false;
+            try { enq = dq.TryEnqueue(async () =>
             {
                 try
                 {
-                    if (_wallpaperWindow == null || _cycleStore == null) return;
+                    Console.WriteLine($"[App] OnWallpaperShouldAdvance dispatcher Play start scene={picked.Id}");
+                    if (_wallpaperWindow == null || _cycleStore == null) { Console.WriteLine("[App] Play aborted: wallpaperWindow/cycleStore null inside dispatch"); return; }
                     var framePaths = _cycleStore.GetFrames(picked.Id);
+                    Console.WriteLine($"[App] GetFrames {picked.Id} returned {framePaths.Count}: {string.Join(",", framePaths.Select(Path.GetFileName))}");
                     var bytes = new List<byte[]>();
                     foreach (var p in framePaths)
                     {
-                        try { bytes.Add(File.ReadAllBytes(p)); } catch { }
+                        try { var bb = File.ReadAllBytes(p); bytes.Add(bb); Console.WriteLine($"[App] Read frame ok {Path.GetFileName(p)} {bb.Length} bytes"); } catch (Exception ex) { Console.WriteLine($"[App] Read frame failed {p}: {ex.Message}"); }
                     }
-                    if (bytes.Count == 0) return;
+                    if (bytes.Count == 0) { Console.WriteLine("[App] No bytes to play — abort"); return; }
+                    Console.WriteLine($"[App] Calling SetIdleColor {settings.IdleColor} and Play scene={picked.Id} bytes={bytes.Count}");
                     _wallpaperWindow.SetIdleColor(settings.IdleColor);
                     _wallpaperWindow.Play(picked, bytes);
-                    var nextId = _selectionPolicy.Pick(eligible, _configStore.LoadHistory(), exeName?.ToLowerInvariant(), settings.AppMap);
-                    if (!string.IsNullOrEmpty(nextId) && nextId != picked.Id)
+                    Console.WriteLine($"[App] Play dispatched ok scene={picked.Id} framesRendered={_wallpaperWindow.FramesRendered} isPlaying={_wallpaperWindow.IsPlaying} isIdle={_wallpaperWindow.IsIdle}");
+                    System.Diagnostics.Debug.WriteLine($"[App] Play dispatched ok scene={picked.Id}");
+                    try
                     {
-                        var next = eligible.FirstOrDefault(c => c.Id == nextId);
-                        if (next != null)
-                            await _wallpaperWindow.PreloadNextSceneAsync(next);
+                        var nextId = _selectionPolicy.Pick(eligible, _configStore.LoadHistory(), exeName?.ToLowerInvariant(), settings.AppMap);
+                        Console.WriteLine($"[App] Preload nextId={nextId ?? "(null)"}");
+                        if (!string.IsNullOrEmpty(nextId) && nextId != picked.Id)
+                        {
+                            var next = eligible.FirstOrDefault(c => c.Id == nextId);
+                            if (next != null) { Console.WriteLine($"[App] Preloading next scene {next.Id}"); await _wallpaperWindow.PreloadNextSceneAsync(next); Console.WriteLine("[App] Preload done"); }
+                        }
+                    }
+                    catch (Exception ex) { Console.WriteLine($"[App] Preload failed: {ex.Message}"); }
+                }
+                catch (Exception ex) { Console.WriteLine($"[App] OnWallpaperShouldAdvance play failed: {ex}"); System.Diagnostics.Debug.WriteLine($"[App] OnWallpaperShouldAdvance play failed: {ex}"); }
+            }); } catch (Exception ex) { Console.WriteLine($"[App] TryEnqueue threw: {ex}"); }
+            Console.WriteLine($"[App] WallpaperShouldAdvance TryEnqueue={enq}");
+            if (!enq)
+            {
+                Console.WriteLine("[App] TryEnqueue false — attempting direct Play fallback");
+                try
+                {
+                    if (_wallpaperWindow != null)
+                    {
+                        var fps2 = _cycleStore.GetFrames(picked.Id);
+                        var b2 = new List<byte[]>();
+                        foreach (var p in fps2) { try { b2.Add(File.ReadAllBytes(p)); } catch { } }
+                        if (b2.Count > 0) { _wallpaperWindow.SetIdleColor(settings.IdleColor); _wallpaperWindow.Play(picked, b2); Console.WriteLine($"[App] Fallback Play ok scene={picked.Id}"); }
                     }
                 }
-                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[App] OnWallpaperShouldAdvance play failed: {ex.Message}"); }
-            });
+                catch (Exception ex) { Console.WriteLine($"[App] Fallback Play failed: {ex}"); }
+            }
         }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[App] OnWallpaperShouldAdvance failed: {ex.Message}"); }
+        catch (Exception ex) { Console.WriteLine($"[App] OnWallpaperShouldAdvance failed: {ex}"); System.Diagnostics.Debug.WriteLine($"[App] OnWallpaperShouldAdvance failed: {ex}"); }
     }
 
     private static ISelectionPolicy CreateSelectionPolicy(SettingsConfig cfg)

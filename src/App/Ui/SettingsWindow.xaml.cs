@@ -19,12 +19,32 @@ public sealed partial class SettingsWindow : Window
 
     public SettingsWindow(SettingsViewModel vm)
     {
-        InitializeComponent();
+        try
+        {
+            InitializeComponent();
+            Console.WriteLine("[SettingsWindow] InitializeComponent ok");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SettingsWindow] InitializeComponent failed: {ex}");
+            System.Diagnostics.Debug.WriteLine($"[SettingsWindow] InitializeComponent failed: {ex}");
+            try
+            {
+                Content = new Microsoft.UI.Xaml.Controls.TextBlock
+                {
+                    Text = $"Settings XAML failed:\n{ex.Message}\n{ex}",
+                    TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+                    Margin = new Microsoft.UI.Xaml.Thickness(16)
+                };
+            }
+            catch (Exception ex2) { Console.WriteLine($"[SettingsWindow] fallback content failed: {ex2}"); }
+            // Continue so Activate still shows something
+        }
         _vm = vm;
         _previewTimer = new DispatcherTimer();
         _previewTimer.Tick += OnPreviewTick;
         this.Activated += OnActivated;
-        this.Closed += (_, _) => { _previewTimer.Stop(); _vm.Dispose(); };
+        this.Closed += (_, _) => { try { _previewTimer.Stop(); } catch { } try { _vm.Dispose(); } catch { } Console.WriteLine("[SettingsWindow] Closed"); };
     }
 
     private static SettingsViewModel CreateDefaultViewModel()
@@ -54,40 +74,51 @@ public sealed partial class SettingsWindow : Window
 
     private async Task OnLoadedAsync()
     {
+        Console.WriteLine("[SettingsWindow] OnLoadedAsync start");
         try
         {
-            CyclesRootTextBox.Text = _vm.GlobalSettings.CyclesRoot;
-            GlobalDelayBox.Value = _vm.GlobalSettings.PostEventDelayMs;
-            NoRepeatBox.Value = _vm.GlobalSettings.NoRepeatWindow;
-            IdleColorBox.Text = _vm.GlobalSettings.IdleColor;
-            for (int i = 0; i < SelectionPolicyCombo.Items.Count; i++)
+            if (CyclesRootTextBox != null) CyclesRootTextBox.Text = _vm.GlobalSettings.CyclesRoot;
+            if (GlobalDelayBox != null) GlobalDelayBox.Value = _vm.GlobalSettings.PostEventDelayMs;
+            if (NoRepeatBox != null) NoRepeatBox.Value = _vm.GlobalSettings.NoRepeatWindow;
+            if (IdleColorBox != null) IdleColorBox.Text = _vm.GlobalSettings.IdleColor;
+            if (SelectionPolicyCombo != null)
             {
-                if (SelectionPolicyCombo.Items[i] is Microsoft.UI.Xaml.Controls.ComboBoxItem ci && (ci.Tag as string) == _vm.GlobalSettings.SelectionPolicy)
+                for (int i = 0; i < SelectionPolicyCombo.Items.Count; i++)
                 {
-                    SelectionPolicyCombo.SelectedIndex = i; break;
+                    if (SelectionPolicyCombo.Items[i] is Microsoft.UI.Xaml.Controls.ComboBoxItem ci && (ci.Tag as string) == _vm.GlobalSettings.SelectionPolicy)
+                    {
+                        SelectionPolicyCombo.SelectedIndex = i; break;
+                    }
                 }
             }
-            if (_vm.HasAppMap)
+            if (_vm.HasAppMap && AppMapPanel != null && AppMapText != null)
             {
                 AppMapPanel.Visibility = Visibility.Visible;
                 AppMapText.Text = string.Join("\n", _vm.AppMap!.Select(kv => $"{kv.Key}: {string.Join(", ", kv.Value)}"));
             }
+            Console.WriteLine("[SettingsWindow] OnLoadedAsync initial fields set");
         }
-        catch { }
+        catch (Exception ex) { Console.WriteLine($"[SettingsWindow] OnLoadedAsync init failed: {ex}"); }
 
-        _vm.PropertyChanged += OnVmPropertyChanged;
-        await _vm.LoadScenesAsync();
+        try { _vm.PropertyChanged += OnVmPropertyChanged; } catch { }
         try
         {
-            SceneListView.ItemsSource = _vm.Scenes;
-            LoadingRing.IsActive = false;
-            LoadingRing.Visibility = Visibility.Collapsed;
-            if (_vm.SelectedScene != null)
+            Console.WriteLine("[SettingsWindow] LoadScenesAsync start");
+            await _vm.LoadScenesAsync();
+            Console.WriteLine($"[SettingsWindow] LoadScenesAsync done Scenes={_vm.Scenes.Count} selected={_vm.SelectedScene?.Id ?? "null"}");
+        }
+        catch (Exception ex) { Console.WriteLine($"[SettingsWindow] LoadScenesAsync failed: {ex}"); }
+        try
+        {
+            if (SceneListView != null) SceneListView.ItemsSource = _vm.Scenes;
+            if (LoadingRing != null) { LoadingRing.IsActive = false; LoadingRing.Visibility = Visibility.Collapsed; }
+            if (_vm.SelectedScene != null && SceneListView != null)
                 SceneListView.SelectedItem = _vm.SelectedScene;
             UpdatePreviewImage();
             UpdatePreviewInterval();
+            Console.WriteLine("[SettingsWindow] OnLoadedAsync complete");
         }
-        catch { }
+        catch (Exception ex) { Console.WriteLine($"[SettingsWindow] OnLoadedAsync tail failed: {ex}"); }
     }
 
     private void OnVmPropertyChanged(object? s, System.ComponentModel.PropertyChangedEventArgs e)
@@ -108,32 +139,40 @@ public sealed partial class SettingsWindow : Window
 
     private void OnSceneSelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
     {
-        if (SceneListView.SelectedItem is SceneListItem item)
+        try
         {
-            _vm.SelectedScene = item;
-            FpsBox.Value = item.Fps;
-            HoldLastBox.Value = item.Config?.HoldLastMs ?? 0;
-            SceneDelayBox.Value = item.Config?.PostEventDelayMs ?? double.NaN;
-            PreviewSlider.Maximum = Math.Max(0, item.Frames.Count - 1);
-            PreviewSlider.Value = _vm.CurrentFrameIndex;
-            UpdatePreviewImage();
-            UpdatePreviewInterval();
+            if (SceneListView?.SelectedItem is SceneListItem item)
+            {
+                _vm.SelectedScene = item;
+                if (FpsBox != null) FpsBox.Value = item.Fps;
+                if (HoldLastBox != null) HoldLastBox.Value = item.Config?.HoldLastMs ?? 0;
+                if (SceneDelayBox != null) SceneDelayBox.Value = item.Config?.PostEventDelayMs ?? double.NaN;
+                if (PreviewSlider != null) { PreviewSlider.Maximum = Math.Max(0, item.Frames.Count - 1); PreviewSlider.Value = _vm.CurrentFrameIndex; }
+                UpdatePreviewImage();
+                UpdatePreviewInterval();
+            }
         }
+        catch (Exception ex) { Console.WriteLine($"[SettingsWindow] OnSceneSelectionChanged failed: {ex.Message}"); }
     }
 
     private void UpdatePreviewImage()
     {
-        var path = _vm.CurrentPreviewFramePath;
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
-        {
-            PreviewImage.Source = null;
-            return;
-        }
         try
         {
-            var bmp = new BitmapImage(new Uri(path));
-            PreviewImage.Source = bmp;
-            PreviewSlider.Value = _vm.CurrentFrameIndex;
+            var path = _vm.CurrentPreviewFramePath;
+            if (PreviewImage == null) return;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                PreviewImage.Source = null;
+                return;
+            }
+            try
+            {
+                var bmp = new BitmapImage(new Uri(path));
+                PreviewImage.Source = bmp;
+                if (PreviewSlider != null) PreviewSlider.Value = _vm.CurrentFrameIndex;
+            }
+            catch (Exception ex) { Console.WriteLine($"[SettingsWindow] UpdatePreviewImage failed: {ex.Message}"); }
         }
         catch { }
     }
