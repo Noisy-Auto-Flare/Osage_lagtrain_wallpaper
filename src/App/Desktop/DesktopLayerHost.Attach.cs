@@ -44,6 +44,7 @@ public sealed partial class DesktopLayerHost
         if (progman == IntPtr.Zero)
         {
             Log("AttachRaised: Progman not found");
+            try { _interop.ShowWindow(hwnd, DesktopNative.SW_HIDE); } catch { }
             return false;
         }
         var shellDefView = _interop.FindWindowEx(progman, IntPtr.Zero, "SHELLDLL_DefView", null);
@@ -75,6 +76,9 @@ public sealed partial class DesktopLayerHost
             // Avoid 6-sec synchronous EnsureLayer on UI thread. Background healing (EnsureLayerAsync) handles retries.
             // Do a single quick probe without sleep; if still missing, fail fast and let caller/healing retry asynchronously.
             Log("AttachClassic: WorkerW not found — skipping synchronous EnsureLayer (use EnsureLayerAsync on background)");
+            // Fallback: keep hidden wallpaper window hidden (do not leave white visible window) — hide via SW_HIDE
+            try { _interop.ShowWindow(hwnd, DesktopNative.SW_HIDE); } catch { }
+            Log($"AttachClassic: fallback SW_HIDE hwnd=0x{hwnd.ToInt64():X} WorkerW not found");
             return false;
         }
         bool parentOk = _interop.SetParent(hwnd, workerW);

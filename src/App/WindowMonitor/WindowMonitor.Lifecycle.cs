@@ -113,6 +113,7 @@ public sealed partial class WindowMonitor
             _fallbackTimer?.Dispose();
             _fallbackTimer = null;
         }
+        lock (_advanceTimers) { foreach (var t in _advanceTimers) try { t.Dispose(); } catch { } _advanceTimers.Clear(); }
         foreach (var h in _hookHandles)
             try { _interop.UnhookWinEvent(h); } catch { }
         _hookHandles.Clear();

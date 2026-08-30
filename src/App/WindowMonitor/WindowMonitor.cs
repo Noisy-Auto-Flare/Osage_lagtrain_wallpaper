@@ -27,6 +27,7 @@ public sealed partial class WindowMonitor : IDisposable
     private bool _pausedByD3D;
     private bool _pausedExplicitly;
     private bool _pausedBySession;
+    private readonly List<System.Threading.Timer> _advanceTimers = new();
 
     public IReadOnlyList<IntPtr> HookHandles => _hookHandles;
     public int ShQueryCalls => _shQueryCalls;
@@ -104,15 +105,25 @@ public sealed partial class WindowMonitor : IDisposable
                 var exeName = _previousExeName;
                 int delay = EffectivePostDelayMs;
                 _previousWasCovering = false;
+                Log($"WallpaperShouldAdvance trigger desktopFg coverEnded monitor={monitorId} exe={exeName} delay={delay} fg=0x{fg.ToInt64():X}");
                 if (delay <= 0)
                     WallpaperShouldAdvance?.Invoke(monitorId, exeName);
                 else
                 {
                     var capturedMonitor = monitorId;
                     var capturedExe = exeName;
-                    var t = new System.Threading.Timer(_ => WallpaperShouldAdvance?.Invoke(capturedMonitor, capturedExe), null, delay, Timeout.Infinite);
-                    GC.KeepAlive(t);
+                    System.Threading.Timer? t = null;
+                    t = new System.Threading.Timer(_ =>
+                    {
+                        try { WallpaperShouldAdvance?.Invoke(capturedMonitor, capturedExe); } catch { }
+                        try { if (t != null) { lock (_advanceTimers) _advanceTimers.Remove(t); t.Dispose(); } } catch { }
+                    }, null, delay, Timeout.Infinite);
+                    lock (_advanceTimers) _advanceTimers.Add(t);
                 }
+            }
+            else
+            {
+                Log($"EvaluateCovering desktopFg no previousCovering fg=0x{fg.ToInt64():X} class={_interop.GetClassName(fg)}");
             }
             _previousWasCovering = false;
             _previousHwnd = fg;
@@ -121,6 +132,7 @@ public sealed partial class WindowMonitor : IDisposable
         if (fg != IntPtr.Zero)
         {
             bool covers = IsCovering(fg);
+            Log($"EvaluateCovering fg=0x{fg.ToInt64():X} class={_interop.GetClassName(fg)} covers={covers} isZoomed={_interop.IsZoomed(fg)} visible={_interop.IsWindowVisible(fg)}");
             if (covers)
             {
                 _previousWasCovering = true;
@@ -144,13 +156,19 @@ public sealed partial class WindowMonitor : IDisposable
                 var exeName = _previousExeName;
                 int delay = EffectivePostDelayMs;
                 _previousWasCovering = false;
+                Log($"WallpaperShouldAdvance trigger nullFg coverEnded monitor={monitorId} exe={exeName} delay={delay}");
                 if (delay <= 0) WallpaperShouldAdvance?.Invoke(monitorId, exeName);
                 else
                 {
                     var capturedMonitor = monitorId;
                     var capturedExe = exeName;
-                    var t = new System.Threading.Timer(_ => WallpaperShouldAdvance?.Invoke(capturedMonitor, capturedExe), null, delay, Timeout.Infinite);
-                    GC.KeepAlive(t);
+                    System.Threading.Timer? t = null;
+                    t = new System.Threading.Timer(_ =>
+                    {
+                        try { WallpaperShouldAdvance?.Invoke(capturedMonitor, capturedExe); } catch { }
+                        try { if (t != null) { lock (_advanceTimers) _advanceTimers.Remove(t); t.Dispose(); } } catch { }
+                    }, null, delay, Timeout.Infinite);
+                    lock (_advanceTimers) _advanceTimers.Add(t);
                 }
             }
         }
@@ -243,5 +261,11 @@ public sealed partial class WindowMonitor : IDisposable
             if (stepDelayMs > 0) Thread.Sleep(stepDelayMs);
         }
         return advances;
+    }
+
+    private static void Log(string msg)
+    {
+        try { Console.WriteLine($"[WindowMonitor] {msg}"); } catch { }
+        try { System.Diagnostics.Debug.WriteLine($"[WindowMonitor] {msg}"); } catch { }
     }
 }

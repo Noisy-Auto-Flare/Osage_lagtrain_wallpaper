@@ -48,6 +48,18 @@ public partial class App : Application
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int GetWindowLongW(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int SetWindowLongW(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtrW(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtrW(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NOTIFYICONDATA
     {
@@ -103,6 +115,7 @@ public partial class App : Application
         _wallpaperHostWindow = new HiddenWallpaperHostWindow();
         _wallpaperHostWindow.Activate();
         _hwnd = WindowNative.GetWindowHandle(_wallpaperHostWindow);
+        HideHostWindowImmediate(_hwnd);
 
         // Show idle #b2b2b2 immediately on UI thread — do not wait for desktop probe
         try
@@ -150,13 +163,27 @@ public partial class App : Application
                 {
                     dispatcher.TryEnqueue(() =>
                     {
+                        bool attached = false;
                         try
                         {
-                            desktopHostCopy.Attach(hwndCopy);
+                            attached = desktopHostCopy.Attach(hwndCopy);
                         }
                         catch (Exception ex)
                         {
                             System.Diagnostics.Debug.WriteLine($"[App] background Attach failed: {ex.Message}");
+                        }
+                        if (!attached)
+                        {
+                            // Even if Attach failed (WorkerW not found), keep host window hidden - do not leave white window visible
+                            try { ShowWindow(hwndCopy, 0); } catch { }
+                            try { HideHostWindowImmediate(hwndCopy); } catch { }
+                            System.Diagnostics.Debug.WriteLine($"[App] Attach returned false - host window hidden (fallback) hwnd=0x{hwndCopy.ToInt64():X}");
+                            Console.WriteLine($"[App] Attach returned false - host window hidden fallback hwnd=0x{hwndCopy.ToInt64():X}");
+                        }
+                        else
+                        {
+                            // Success: ensure wallpaper is visible behind icons but still hidden from taskbar/Alt+Tab
+                            try { EnsureWallpaperBehindDesktop(hwndCopy); } catch { }
                         }
                         try
                         {
@@ -167,12 +194,30 @@ public partial class App : Application
                         {
                             System.Diagnostics.Debug.WriteLine($"[App] background WallpaperWindow AttachToDesktop failed: {ex.Message}");
                         }
+                        if (attached)
+                        {
+                            try { EnsureWallpaperBehindDesktop(hwndCopy); } catch { }
+                        }
                     });
                 }
                 else
                 {
-                    try { desktopHostCopy.Attach(hwndCopy); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[App] background Attach (no dispatcher) failed: {ex.Message}"); }
+                    bool attached = false;
+                    try { attached = desktopHostCopy.Attach(hwndCopy); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[App] background Attach (no dispatcher) failed: {ex.Message}"); }
+                    if (!attached)
+                    {
+                        try { ShowWindow(hwndCopy, 0); } catch { }
+                        try { HideHostWindowImmediate(hwndCopy); } catch { }
+                    }
+                    else
+                    {
+                        try { EnsureWallpaperBehindDesktop(hwndCopy); } catch { }
+                    }
                     try { wallpaperWindowCopy?.AttachToDesktop(hwndCopy); wallpaperWindowCopy?.ShowIdle(); } catch { }
+                    if (attached)
+                    {
+                        try { EnsureWallpaperBehindDesktop(hwndCopy); } catch { }
+                    }
                 }
             }
             catch (Exception ex)
@@ -291,6 +336,8 @@ public partial class App : Application
     {
         try
         {
+            System.Diagnostics.Debug.WriteLine($"[App] WallpaperShouldAdvance monitor={monitorId} exe={exeName}");
+            Console.WriteLine($"[App] WallpaperShouldAdvance monitor={monitorId} exe={exeName}");
             if (_cycleStore == null || _configStore == null || _selectionPolicy == null) return;
             var settings = _configStore.LoadSettings();
             var all = _cycleStore.LoadAll();
@@ -376,6 +423,79 @@ public partial class App : Application
         try { _desktopHost?.Dispose(); } catch { }
         try { _wallpaperWindow?.Dispose(); } catch { }
         try { _singleInstance?.Dispose(); } catch { }
+    }
+
+    private static void HideHostWindowImmediate(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return;
+        try
+        {
+            const int GWL_EXSTYLE = -20;
+            const int WS_EX_TOOLWINDOW = 0x00000080;
+            const int WS_EX_APPWINDOW = 0x00040000;
+            try
+            {
+                var ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                long exVal = ex.ToInt64();
+                exVal |= WS_EX_TOOLWINDOW;
+                exVal &= ~WS_EX_APPWINDOW;
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new IntPtr(exVal));
+            }
+            catch { }
+            try
+            {
+                var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+                var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
+                if (appWindow != null)
+                {
+                    appWindow.IsShownInSwitchers = false;
+                }
+            }
+            catch { }
+            ShowWindow(hwnd, 0); // SW_HIDE
+            System.Diagnostics.Debug.WriteLine($"[App] HideHostWindowImmediate SW_HIDE + TOOLWINDOW hwnd=0x{hwnd.ToInt64():X}");
+            Console.WriteLine($"[App] HideHostWindowImmediate hidden hwnd=0x{hwnd.ToInt64():X}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[App] HideHostWindowImmediate failed: {ex.Message}");
+        }
+    }
+
+    private static void EnsureWallpaperBehindDesktop(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return;
+        try
+        {
+            const int GWL_EXSTYLE = -20;
+            const int WS_EX_TOOLWINDOW = 0x00000080;
+            const int WS_EX_APPWINDOW = 0x00040000;
+            try
+            {
+                var ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                long exVal = ex.ToInt64();
+                exVal |= WS_EX_TOOLWINDOW;
+                exVal &= ~WS_EX_APPWINDOW;
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new IntPtr(exVal));
+            }
+            catch { }
+            try
+            {
+                var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+                var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
+                if (appWindow != null)
+                {
+                    appWindow.IsShownInSwitchers = false;
+                }
+            }
+            catch { }
+            ShowWindow(hwnd, 8); // SW_SHOWNA - show without activate, keeps behind desktop parent
+            System.Diagnostics.Debug.WriteLine($"[App] EnsureWallpaperBehindDesktop SW_SHOWNA hwnd=0x{hwnd.ToInt64():X}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[App] EnsureWallpaperBehindDesktop failed: {ex.Message}");
+        }
     }
 }
 
